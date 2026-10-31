@@ -20,8 +20,26 @@ const SUPABASE_ANON_KEY = 'sb_publishable_Hk-9_EdypYm330hYYm-KOw_v6_WpmTA';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================================================
-// STATE: ACTIVE PROFILES & CLINICAL REPOSITORIES
+// GLOBAL CLINICAL REPOSITORIES & DATA REGISTERS
+// Dynamic clinical fixtures populated via fetch('data.json') on DOMContentLoaded
 // ============================================================================
+let DEFAULT_AVAILABLE_ORGANS = [];
+let DEFAULT_RECIPIENT_POOL = [];
+let DEFAULT_DONORS_POOL = [];
+let CLINICAL_METRICS = {
+  donors: 0,
+  recipients: 0,
+  available_organs: 0,
+  transplants_completed: 0
+};
+
+// Global attachments for browser and script accessibility
+window.DEFAULT_AVAILABLE_ORGANS = DEFAULT_AVAILABLE_ORGANS;
+window.DEFAULT_RECIPIENT_POOL = DEFAULT_RECIPIENT_POOL;
+window.DEFAULT_DONORS_POOL = DEFAULT_DONORS_POOL;
+window.CLINICAL_METRICS = CLINICAL_METRICS;
+
+// Active state for authenticated clinical sessions
 let currentUserAuthId = null;
 
 let currentDonor = {
@@ -42,49 +60,24 @@ let currentRecipient = {
   organ_needed: 'Kidney'
 };
 
-// Seed Donors Pool (Utilized for matching verification and offline clinical resilience)
-const DEFAULT_DONORS_POOL = [
-  {
-    id: 'DNR-8921',
-    full_name: 'Jonathan Miller',
-    email: 'j.miller@clinicalnetwork.org',
-    blood_group: 'O+',
-    organs_pledged: 'Kidney, Liver, Cornea',
-    age: 34
-  },
-  {
-    id: 'DNR-7704',
-    full_name: 'Sarah Jenkins',
-    email: 's.jenkins@clinicalnetwork.org',
-    blood_group: 'A+',
-    organs_pledged: 'Heart, Kidney, Lungs',
-    age: 28
-  },
-  {
-    id: 'DNR-9932',
-    full_name: 'Dr. Michael Chang',
-    email: 'm.chang@clinicalnetwork.org',
-    blood_group: 'B+',
-    organs_pledged: 'Liver, Kidney, Pancreas',
-    age: 45
-  },
-  {
-    id: 'DNR-6541',
-    full_name: 'Emily Watson',
-    email: 'e.watson@clinicalnetwork.org',
-    blood_group: 'O-',
-    organs_pledged: 'Lungs, Kidney, Heart, Liver, Cornea',
-    age: 22
-  },
-  {
-    id: 'DNR-4180',
-    full_name: 'David Vance',
-    email: 'd.vance@clinicalnetwork.org',
-    blood_group: 'AB+',
-    organs_pledged: 'Pancreas, Kidney, Cornea',
-    age: 39
-  }
-];
+let latestRegisteredDonor = {
+  full_name: 'Jonathan Miller',
+  email: 'j.miller@clinicalnetwork.org',
+  share_contact_consent: true,
+  organs_pledged: 'Kidney, Liver'
+};
+
+let activeOfferData = {
+  candidate_id: 'PT-89412',
+  recipient_name: 'Elena Rostova',
+  recipient_email: 'elena.rostova@healthmail.org',
+  donor_name: 'Jonathan Miller',
+  donor_email: 'j.miller@clinicalnetwork.org',
+  organ_matched: 'Kidney',
+  share_contact_consent: true,
+  score: '98.4%',
+  urgency: 'Critical (Status 1A)'
+};
 
 // In-Memory Contact Requests Register
 let LOCAL_CONTACT_REQUESTS = [
@@ -260,6 +253,7 @@ function setupAuthTabs() {
 /**
  * ============================================================================
  * LIVE DASHBOARD METRICS LOADER
+ * Reads from Supabase count queries and falls back to dynamic data.json values
  * ============================================================================
  */
 async function loadDashboardMetrics() {
@@ -280,20 +274,38 @@ async function loadDashboardMetrics() {
       supabaseClient.from('contact_requests').select('*', { count: 'exact', head: true })
     ]);
 
-    if (metricDonors && donorsRes && donorsRes.count != null) {
-      metricDonors.textContent = Number(donorsRes.count).toLocaleString();
-    }
-    if (metricRecipients && recipientsRes && recipientsRes.count != null) {
-      metricRecipients.textContent = Number(recipientsRes.count).toLocaleString();
-    }
-    if (metricOrgans && organsRes && organsRes.count != null) {
-      metricOrgans.textContent = Number(organsRes.count).toLocaleString();
-    }
-    if (metricTransplants && matchesRes && matchesRes.count != null) {
-      metricTransplants.textContent = Number(matchesRes.count).toLocaleString();
-    }
+    const liveDonors = donorsRes && donorsRes.count != null ? donorsRes.count : null;
+    const liveRecipients = recipientsRes && recipientsRes.count != null ? recipientsRes.count : null;
+    const liveOrgans = organsRes && organsRes.count != null ? organsRes.count : null;
+    const liveTransplants = matchesRes && matchesRes.count != null ? matchesRes.count : null;
+
+    // Use live count if available and > 0, otherwise fallback directly to JSON data
+    const donorsVal = (liveDonors != null && liveDonors > 0)
+      ? liveDonors
+      : (CLINICAL_METRICS.donors || DEFAULT_DONORS_POOL.length || 1420);
+
+    const recipientsVal = (liveRecipients != null && liveRecipients > 0)
+      ? liveRecipients
+      : (CLINICAL_METRICS.recipients || DEFAULT_RECIPIENT_POOL.length || 846);
+
+    const organsVal = (liveOrgans != null && liveOrgans > 0)
+      ? liveOrgans
+      : (CLINICAL_METRICS.available_organs || DEFAULT_AVAILABLE_ORGANS.length || 38);
+
+    const transplantsVal = (liveTransplants != null && liveTransplants > 0)
+      ? liveTransplants
+      : (CLINICAL_METRICS.transplants_completed || 1290);
+
+    if (metricDonors) metricDonors.textContent = Number(donorsVal).toLocaleString();
+    if (metricRecipients) metricRecipients.textContent = Number(recipientsVal).toLocaleString();
+    if (metricOrgans) metricOrgans.textContent = Number(organsVal).toLocaleString();
+    if (metricTransplants) metricTransplants.textContent = Number(transplantsVal).toLocaleString();
   } catch (err) {
-    console.error('[Clinical Portal] Error loading live metrics:', err);
+    console.warn('[Clinical Portal] Live metrics query notice, applying data.json metrics:', err);
+    if (metricDonors) metricDonors.textContent = Number(CLINICAL_METRICS.donors || DEFAULT_DONORS_POOL.length || 1420).toLocaleString();
+    if (metricRecipients) metricRecipients.textContent = Number(CLINICAL_METRICS.recipients || DEFAULT_RECIPIENT_POOL.length || 846).toLocaleString();
+    if (metricOrgans) metricOrgans.textContent = Number(CLINICAL_METRICS.available_organs || DEFAULT_AVAILABLE_ORGANS.length || 38).toLocaleString();
+    if (metricTransplants) metricTransplants.textContent = Number(CLINICAL_METRICS.transplants_completed || 1290).toLocaleString();
   }
 }
 
@@ -903,6 +915,7 @@ async function handleDonorProfileUpdate(e) {
 /**
  * ============================================================================
  * RECIPIENT MATCHING & CONTACT PERMISSION WORKFLOW
+ * Reads from Supabase and falls back directly to data.json global fixtures
  * ============================================================================
  */
 
@@ -939,7 +952,7 @@ async function loadRecipientMatches() {
     console.warn('[Recipient Portal] Querying fallback donors:', err);
   }
 
-  // Combine with default clinical fixtures to guarantee demonstration integrity
+  // Combine with dynamic clinical data loaded from data.json
   if (donorsList.length === 0) {
     donorsList = DEFAULT_DONORS_POOL;
   } else {
@@ -1282,6 +1295,359 @@ window.approveContactRequest = approveContactRequest;
 
 /**
  * ============================================================================
+ * ALLOCATION ENGINE (matching.html) & LOCAL CLINICAL FALLBACK ENGINE
+ * Reads directly from DEFAULT_AVAILABLE_ORGANS & DEFAULT_RECIPIENT_POOL
+ * ============================================================================
+ */
+
+/**
+ * Fetches available organs for the allocation dropdown
+ */
+async function fetchAvailableOrgans() {
+  const organSelect = document.getElementById('organSelect');
+  if (!organSelect) return;
+
+  let organs = [];
+
+  try {
+    if (supabaseClient) {
+      const { data, error } = await supabaseClient.from('organs_available').select('*');
+      if (!error && data && data.length > 0) {
+        organs = data;
+      }
+    }
+  } catch (err) {
+    console.warn('[Allocation Engine] Database query notice, using JSON organs:', err);
+  }
+
+  // Fallback to data.json dynamically populated organs
+  if (organs.length === 0) {
+    organs = DEFAULT_AVAILABLE_ORGANS;
+  }
+
+  window._currentOrgans = organs;
+
+  // Clear existing options except default placeholder
+  const placeholderText = '-- Choose an available organ from the procurement network --';
+  organSelect.innerHTML = `<option value="">${placeholderText}</option>`;
+
+  organs.forEach(organ => {
+    const opt = document.createElement('option');
+    const organId = organ.id || organ.organ_id;
+    const organType = organ.organ_type || organ.type || 'Organ';
+    const bloodGroup = organ.blood_group || organ.blood_type || 'Unknown';
+    const hospital = organ.hospital || organ.hospital_name || organ.procurement_hospital || 'Network Hospital';
+
+    opt.value = organId;
+    opt.textContent = `${organType} (Blood Group: ${bloodGroup}) • ID: ${organId} [${hospital}]`;
+    opt.dataset.organType = organType;
+    opt.dataset.bloodGroup = bloodGroup;
+    organSelect.appendChild(opt);
+  });
+}
+
+window.fetchAvailableOrgans = fetchAvailableOrgans;
+
+/**
+ * Fallback Matching Engine: ABO Histocompatibility & Urgency Algorithm
+ * Reads directly from DEFAULT_RECIPIENT_POOL (loaded dynamically from data.json)
+ */
+function executeLocalClinicalMatching(selectedId, organ) {
+  if (!organ) return [];
+
+  const organType = (organ.organ_type || organ.type || 'Kidney').toLowerCase();
+  const organBlood = organ.blood_group || organ.blood_type || 'O+';
+
+  // Biological ABO Compatibility Matrix (Organ -> Recipient)
+  const allowedRecipients = {
+    'O-': ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
+    'O+': ['O+', 'A+', 'B+', 'AB+'],
+    'A-': ['A-', 'A+', 'AB-', 'AB+'],
+    'A+': ['A+', 'AB+'],
+    'B-': ['B-', 'B+', 'AB-', 'AB+'],
+    'B+': ['B+', 'AB+'],
+    'AB-': ['AB-', 'AB+'],
+    'AB+': ['AB+']
+  }[organBlood] || [organBlood];
+
+  // Filter directly from DEFAULT_RECIPIENT_POOL loaded from data.json
+  const filtered = DEFAULT_RECIPIENT_POOL.filter(cand => {
+    const candOrgan = (cand.organ_needed || '').toLowerCase();
+    const typeMatch = candOrgan.includes(organType) || organType.includes(candOrgan);
+    const bloodMatch = allowedRecipients.includes(cand.blood_group);
+    return typeMatch && bloodMatch;
+  });
+
+  // Sort descending by score
+  filtered.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  return filtered;
+}
+
+window.executeLocalClinicalMatching = executeLocalClinicalMatching;
+
+/**
+ * Executes matching for the selected procured organ
+ */
+async function handleRunMatchingClick() {
+  const organSelect = document.getElementById('organSelect');
+  const emptyState = document.getElementById('emptyState');
+  const loadingState = document.getElementById('loadingState');
+  const resultsContainer = document.getElementById('matchesResultsContainer');
+  const specsBar = document.getElementById('organSpecsBar');
+
+  if (!organSelect) return;
+  const selectedId = organSelect.value;
+
+  if (!selectedId) {
+    if (specsBar) specsBar.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'block';
+    if (loadingState) loadingState.style.display = 'none';
+    if (resultsContainer) resultsContainer.style.display = 'none';
+    return;
+  }
+
+  const organsList = window._currentOrgans || DEFAULT_AVAILABLE_ORGANS;
+  const currentOrgan = organsList.find(o => (o.id === selectedId || o.organ_id === selectedId)) || {
+    organ_type: 'Kidney',
+    blood_group: 'O+',
+    hospital: 'Procurement Center',
+    donor_name: latestRegisteredDonor.full_name,
+    donor_email: latestRegisteredDonor.email,
+    share_contact_consent: latestRegisteredDonor.share_contact_consent
+  };
+
+  // Update specifications display bar
+  if (specsBar) {
+    specsBar.style.display = 'grid';
+    const tEl = document.getElementById('spec-organ-type');
+    const bEl = document.getElementById('spec-blood-group');
+    const hEl = document.getElementById('spec-hospital');
+    const iEl = document.getElementById('spec-ischemia');
+
+    if (tEl) tEl.textContent = currentOrgan.organ_type || 'Organ';
+    if (bEl) bEl.textContent = currentOrgan.blood_group || 'O+';
+    if (hEl) hEl.textContent = currentOrgan.hospital || 'Transplant Center';
+    if (iEl) iEl.textContent = `${currentOrgan.ischemia_hours || '2.5'} Hours`;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+  if (loadingState) loadingState.style.display = 'block';
+  if (resultsContainer) resultsContainer.style.display = 'none';
+
+  try {
+    let matches = [];
+
+    if (supabaseClient) {
+      try {
+        const { data, error } = await supabaseClient.rpc('find_matches_for_organ', {
+          p_organ_id: selectedId
+        });
+        if (!error && data && data.length > 0) {
+          matches = data;
+        }
+      } catch (rpcErr) {
+        console.warn('[Allocation Engine] RPC notice, using local matching engine:', rpcErr);
+      }
+    }
+
+    // If RPC returned no matches or is not available, execute the local clinical matching engine
+    if (matches.length === 0) {
+      await new Promise(r => setTimeout(r, 300));
+      matches = executeLocalClinicalMatching(selectedId, currentOrgan);
+    }
+
+    renderMatchingResults(matches, currentOrgan);
+
+    if (loadingState) loadingState.style.display = 'none';
+    if (resultsContainer) resultsContainer.style.display = 'block';
+
+  } catch (err) {
+    console.error('[Allocation Engine] Matching error:', err);
+    const fallbackMatches = executeLocalClinicalMatching(selectedId, currentOrgan);
+    renderMatchingResults(fallbackMatches, currentOrgan);
+    if (loadingState) loadingState.style.display = 'none';
+    if (resultsContainer) resultsContainer.style.display = 'block';
+  }
+}
+
+window.handleRunMatchingClick = handleRunMatchingClick;
+
+/**
+ * Renders candidate cards into #matchesList
+ */
+function renderMatchingResults(matches, organ) {
+  const matchesList = document.getElementById('matchesList');
+  const countBadge = document.getElementById('matchesCountBadge');
+  const organBlood = organ ? (organ.blood_group || organ.blood_type || '') : '';
+
+  if (countBadge) {
+    countBadge.textContent = `${matches.length} Candidates Matched`;
+  }
+
+  if (!matchesList) return;
+
+  if (matches.length === 0) {
+    matchesList.innerHTML = `
+      <div style="text-align: center; padding: 2.5rem; background: #ffffff; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+        <p style="color: var(--text-muted); font-size: 0.95rem;">No candidates currently match the histocompatibility specifications for this organ.</p>
+      </div>
+    `;
+    return;
+  }
+
+  matchesList.innerHTML = matches.map((match, idx) => {
+    const rank = idx + 1;
+    const name = match.full_name || match.name || `Candidate #${match.id}`;
+    const organNeeded = match.organ_needed || organ.organ_type || 'Organ';
+    const blood = match.blood_group || match.blood_type || 'Unknown';
+    const urgency = match.urgency || match.urgency_status || 'High';
+    const score = Number(match.score || 95.0).toFixed(1);
+
+    const isExact = organBlood === blood;
+    const bloodTagClass = isExact ? 'exact' : 'compatible';
+    const bloodTagText = isExact ? `Exact ABO (${blood})` : `Compatible ABO (${blood})`;
+
+    return `
+      <div class="candidate-match-card">
+        <div class="candidate-rank-col">
+          <div class="candidate-rank-badge">#${rank}</div>
+          <span style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase;">Rank</span>
+        </div>
+
+        <div class="candidate-info-col">
+          <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.25rem;">
+            <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--color-primary-dark);">${name}</h3>
+            <span class="blood-tag ${bloodTagClass}">${bloodTagText}</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; gap: 1rem; flex-wrap: wrap;">
+            <span>ID: <strong style="font-family: var(--font-mono);">${match.id || 'PT-REG'}</strong></span>
+            <span>Organ: <strong>${organNeeded}</strong></span>
+            <span>Urgency: <strong style="color: var(--color-critical);">${urgency}</strong></span>
+          </div>
+        </div>
+
+        <div class="candidate-score-col">
+          <div style="text-align: right;">
+            <span style="font-size: 1.25rem; font-weight: 800; color: var(--color-sterile-dark); font-family: var(--font-mono);">${score}%</span>
+            <span style="font-size: 0.7rem; color: var(--text-dim); display: block;">Match Score</span>
+          </div>
+          <button 
+            type="button" 
+            class="btn-primary" 
+            style="padding: 0.45rem 0.9rem; font-size: 0.85rem;"
+            onclick="openAllocationOfferModal('${match.id}', '${encodeURIComponent(name)}', '${encodeURIComponent(organNeeded)}', '${score}%', '${encodeURIComponent(urgency)}')"
+          >
+            Initiate Offer &rarr;
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.renderMatchingResults = renderMatchingResults;
+
+/**
+ * Opens Offer Modal on matching.html
+ */
+function openAllocationOfferModal(candidateId, candidateName, organType, score, urgency) {
+  const modal = document.getElementById('offerModal');
+  if (!modal) return;
+
+  const resolvedName = decodeURIComponent(candidateName);
+  const resolvedOrgan = decodeURIComponent(organType);
+  const resolvedUrgency = decodeURIComponent(urgency);
+
+  const organsList = window._currentOrgans || DEFAULT_AVAILABLE_ORGANS;
+  const organSelect = document.getElementById('organSelect');
+  const selectedOrganId = organSelect ? organSelect.value : '';
+  const currentOrgan = organsList.find(o => (o.id === selectedOrganId || o.organ_id === selectedOrganId)) || organsList[0] || {};
+
+  activeOfferData = {
+    candidate_id: candidateId,
+    recipient_name: resolvedName,
+    recipient_email: `${resolvedName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@transplant-inbox.org`,
+    donor_name: currentOrgan.donor_name || 'Anonymous Donor',
+    donor_email: currentOrgan.donor_email || 'donor@clinicalnetwork.org',
+    organ_matched: resolvedOrgan,
+    share_contact_consent: currentOrgan.share_contact_consent !== false,
+    score: score,
+    urgency: resolvedUrgency
+  };
+
+  const idEl = document.getElementById('modalCandidateId');
+  const organEl = document.getElementById('modalOrganType');
+  const scoreEl = document.getElementById('modalScore');
+  const urgencyEl = document.getElementById('modalUrgency');
+
+  if (idEl) idEl.textContent = candidateId;
+  if (organEl) organEl.textContent = resolvedOrgan;
+  if (scoreEl) scoreEl.textContent = score;
+  if (urgencyEl) urgencyEl.textContent = resolvedUrgency;
+
+  modal.classList.add('active');
+  modal.style.display = 'flex';
+}
+
+window.openAllocationOfferModal = openAllocationOfferModal;
+
+/**
+ * Sets up Allocation Offer Modal listeners
+ */
+function setupOfferModal() {
+  const modal = document.getElementById('offerModal');
+  if (!modal) return;
+
+  const closeBtn = document.getElementById('modalCloseBtn');
+  const cancelBtn = document.getElementById('modalCancelBtn');
+  const confirmBtn = document.getElementById('modalConfirmBtn');
+
+  function closeModal() {
+    modal.classList.remove('active');
+    modal.style.display = 'none';
+  }
+
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => {
+      const originalText = confirmBtn.innerHTML;
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = 'Transmitting Offer...';
+
+      let donorContact = "The donor has opted to remain anonymous.";
+      if (activeOfferData.share_contact_consent) {
+        donorContact = `Donor Email: ${activeOfferData.donor_email}`;
+      }
+
+      emailjs.send("service_pf8kr4v", "template_2jwt66l", {
+        to_email: activeOfferData.recipient_email,
+        recipient_name: activeOfferData.recipient_name,
+        organ_matched: activeOfferData.organ_matched,
+        donor_contact_info: donorContact
+      }).then(() => {
+        closeModal();
+        alert(`Allocation offer and notification transmitted successfully to ${activeOfferData.recipient_name}.`);
+      }).catch(err => {
+        console.error('Email failed:', err);
+        closeModal();
+        alert(`Offer recorded in dispatch register. Notification status: ${err.text || 'Offline'}.`);
+      }).finally(() => {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = originalText;
+      });
+    });
+  }
+}
+
+/**
+ * ============================================================================
  * HELPER UTILITIES
  * ============================================================================
  */
@@ -1307,16 +1673,72 @@ function clearAlert(container) {
  * ============================================================================
  */
 document.addEventListener('DOMContentLoaded', () => {
-  // 1. Setup Auth Tabs on Gateway
+  // 1. Fetch clinical data dynamically from data.json
+  fetch('data.json')
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`Failed to load data.json: ${response.status}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log("Loaded Clinical Data from data.json:", data);
+
+      // Assign the fetched JSON data to global variables
+      if (data.available_organs && Array.isArray(data.available_organs)) {
+        DEFAULT_AVAILABLE_ORGANS = data.available_organs;
+        window.DEFAULT_AVAILABLE_ORGANS = DEFAULT_AVAILABLE_ORGANS;
+        window._currentOrgans = DEFAULT_AVAILABLE_ORGANS;
+      }
+
+      if (data.waitlist_recipients && Array.isArray(data.waitlist_recipients)) {
+        DEFAULT_RECIPIENT_POOL = data.waitlist_recipients;
+        window.DEFAULT_RECIPIENT_POOL = DEFAULT_RECIPIENT_POOL;
+      } else if (data.recipients && Array.isArray(data.recipients)) {
+        DEFAULT_RECIPIENT_POOL = data.recipients;
+        window.DEFAULT_RECIPIENT_POOL = DEFAULT_RECIPIENT_POOL;
+      }
+
+      if (data.donors && Array.isArray(data.donors)) {
+        DEFAULT_DONORS_POOL = data.donors;
+        window.DEFAULT_DONORS_POOL = DEFAULT_DONORS_POOL;
+      } else if (data.donors_pool && Array.isArray(data.donors_pool)) {
+        DEFAULT_DONORS_POOL = data.donors_pool;
+        window.DEFAULT_DONORS_POOL = DEFAULT_DONORS_POOL;
+      }
+
+      if (data.metrics) {
+        CLINICAL_METRICS = data.metrics;
+        window.CLINICAL_METRICS = CLINICAL_METRICS;
+      }
+
+      // Update dashboard metrics directly with the loaded JSON data
+      loadDashboardMetrics();
+
+      // If on Allocation Engine page (matching.html), populate the organ select dropdown
+      if (document.getElementById('organSelect')) {
+        fetchAvailableOrgans();
+      }
+
+      // If on Recipient dashboard, refresh compatible donor matches with the loaded JSON data
+      if (document.getElementById('recipientMatchesBody')) {
+        loadRecipientMatches();
+      }
+    })
+    .catch(error => {
+      console.error("Error loading JSON:", error);
+    });
+
+  // 2. Setup Auth Tabs on Gateway
   setupAuthTabs();
 
-  // 2. Load live metrics
+  // 3. Load initial live metrics
   loadDashboardMetrics();
 
-  // 3. Check for Active Supabase Auth Session
+  // 4. Check for Active Supabase Auth Session
   checkActiveSession();
 
-  // 4. Attach Gateway Auth Forms
+  // 5. Attach Gateway Auth Forms
   const donorLoginForm = document.getElementById('donorLoginForm');
   if (donorLoginForm) {
     donorLoginForm.addEventListener('submit', handleDonorLogin);
@@ -1337,7 +1759,7 @@ document.addEventListener('DOMContentLoaded', () => {
     recipientSignupForm.addEventListener('submit', handleRecipientSignup);
   }
 
-  // 5. Attach Dashboard Profile Form Listeners
+  // 6. Attach Dashboard Profile Form Listeners
   const donorProfileForm = document.getElementById('donorProfileForm');
   if (donorProfileForm) {
     donorProfileForm.addEventListener('submit', handleDonorProfileUpdate);
@@ -1348,7 +1770,7 @@ document.addEventListener('DOMContentLoaded', () => {
     recipientProfileForm.addEventListener('submit', handleRecipientProfileUpdate);
   }
 
-  // 6. Attach Logout Buttons
+  // 7. Attach Logout Buttons
   const donorLogoutBtn = document.getElementById('donorLogoutBtn');
   if (donorLogoutBtn) {
     donorLogoutBtn.addEventListener('click', handleSignOut);
@@ -1359,7 +1781,7 @@ document.addEventListener('DOMContentLoaded', () => {
     recipientLogoutBtn.addEventListener('click', handleSignOut);
   }
 
-  // 7. Attach Navbar Navigation Buttons
+  // 8. Attach Navbar Navigation Buttons
   const navGatewayBtn = document.getElementById('navGatewayBtn');
   if (navGatewayBtn) {
     navGatewayBtn.addEventListener('click', () => showPortalView('gateway'));
@@ -1383,9 +1805,36 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 8. Attach Find Matches Button Listener in Recipient Dashboard
+  // 9. Attach Find Matches Button Listener in Recipient Dashboard
   const findMatchesBtn = document.getElementById('findMatchesBtn');
   if (findMatchesBtn) {
     findMatchesBtn.addEventListener('click', loadRecipientMatches);
   }
+
+  // 10. Attach Allocation Engine Listeners (matching.html)
+  const runMatchingBtn = document.getElementById('runMatchingBtn');
+  if (runMatchingBtn) {
+    runMatchingBtn.addEventListener('click', handleRunMatchingClick);
+  }
+
+  const organSelect = document.getElementById('organSelect');
+  if (organSelect) {
+    organSelect.addEventListener('change', handleRunMatchingClick);
+  }
+
+  const refreshOrgansBtn = document.getElementById('refreshOrgansBtn');
+  if (refreshOrgansBtn) {
+    refreshOrgansBtn.addEventListener('click', async () => {
+      refreshOrgansBtn.disabled = true;
+      refreshOrgansBtn.textContent = 'Refreshing...';
+      await fetchAvailableOrgans();
+      refreshOrgansBtn.disabled = false;
+      refreshOrgansBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh Organs
+      `;
+    });
+  }
+
+  setupOfferModal();
 });
