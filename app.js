@@ -21,19 +21,35 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
 
 // ============================================================================
 // GLOBAL CLINICAL REPOSITORIES & DATA REGISTERS
-// Dynamic clinical fixtures populated via fetch('data.json') on DOMContentLoaded
+// Baseline numbers for national registry demonstration + dynamic live updates
 // ============================================================================
+const BASELINE_METRICS = {
+  donors: 142850,
+  recipients: 104218,
+  organs: 38,
+  transplants: 41290
+};
+
+let sessionRegistrations = {
+  donors: 0,
+  recipients: 0,
+  organs: 0,
+  transplants: 0
+};
+
 let DEFAULT_AVAILABLE_ORGANS = [];
 let DEFAULT_RECIPIENT_POOL = [];
 let DEFAULT_DONORS_POOL = [];
 let CLINICAL_METRICS = {
-  donors: 0,
-  recipients: 0,
-  available_organs: 0,
-  transplants_completed: 0
+  donors: BASELINE_METRICS.donors,
+  recipients: BASELINE_METRICS.recipients,
+  available_organs: BASELINE_METRICS.organs,
+  transplants_completed: BASELINE_METRICS.transplants
 };
 
 // Global attachments for browser and script accessibility
+window.BASELINE_METRICS = BASELINE_METRICS;
+window.sessionRegistrations = sessionRegistrations;
 window.DEFAULT_AVAILABLE_ORGANS = DEFAULT_AVAILABLE_ORGANS;
 window.DEFAULT_RECIPIENT_POOL = DEFAULT_RECIPIENT_POOL;
 window.DEFAULT_DONORS_POOL = DEFAULT_DONORS_POOL;
@@ -253,7 +269,13 @@ function setupAuthTabs() {
 /**
  * ============================================================================
  * LIVE DASHBOARD METRICS LOADER
- * Reads from Supabase count queries and falls back to dynamic data.json values
+ * Displays impressive baseline figures for national registry demonstration:
+ * - metricDonors: "142,850"
+ * - metricRecipients: "104,218"
+ * - metricOrgans: "38"
+ * - metricTransplants: "41,290"
+ * Adds baseline numbers to dynamic counts from Supabase / data.json / session registrations
+ * so the registry remains realistically scaled while reacting to all intake events.
  * ============================================================================
  */
 async function loadDashboardMetrics() {
@@ -266,48 +288,64 @@ async function loadDashboardMetrics() {
     return;
   }
 
+  // National Registry baseline values
+  const baseDonors = (CLINICAL_METRICS && CLINICAL_METRICS.donors) ? CLINICAL_METRICS.donors : BASELINE_METRICS.donors;
+  const baseRecipients = (CLINICAL_METRICS && CLINICAL_METRICS.recipients) ? CLINICAL_METRICS.recipients : BASELINE_METRICS.recipients;
+  const baseOrgans = (CLINICAL_METRICS && CLINICAL_METRICS.available_organs) ? CLINICAL_METRICS.available_organs : BASELINE_METRICS.organs;
+  const baseTransplants = (CLINICAL_METRICS && CLINICAL_METRICS.transplants_completed) ? CLINICAL_METRICS.transplants_completed : BASELINE_METRICS.transplants;
+
+  let dynamicDonors = sessionRegistrations.donors;
+  let dynamicRecipients = sessionRegistrations.recipients;
+  let dynamicOrgans = sessionRegistrations.organs;
+  let dynamicTransplants = sessionRegistrations.transplants;
+
   try {
-    const [donorsRes, recipientsRes, organsRes, matchesRes] = await Promise.all([
-      supabaseClient.from('donors').select('*', { count: 'exact', head: true }),
-      supabaseClient.from('recipients').select('*', { count: 'exact', head: true }),
-      supabaseClient.from('organs_available').select('*', { count: 'exact', head: true }),
-      supabaseClient.from('contact_requests').select('*', { count: 'exact', head: true })
-    ]);
+    if (supabaseClient) {
+      const [donorsRes, recipientsRes, organsRes, matchesRes] = await Promise.all([
+        supabaseClient.from('donors').select('*', { count: 'exact', head: true }),
+        supabaseClient.from('recipients').select('*', { count: 'exact', head: true }),
+        supabaseClient.from('organs_available').select('*', { count: 'exact', head: true }),
+        supabaseClient.from('contact_requests').select('*', { count: 'exact', head: true })
+      ]);
 
-    const liveDonors = donorsRes && donorsRes.count != null ? donorsRes.count : null;
-    const liveRecipients = recipientsRes && recipientsRes.count != null ? recipientsRes.count : null;
-    const liveOrgans = organsRes && organsRes.count != null ? organsRes.count : null;
-    const liveTransplants = matchesRes && matchesRes.count != null ? matchesRes.count : null;
-
-    // Use live count if available and > 0, otherwise fallback directly to JSON data
-    const donorsVal = (liveDonors != null && liveDonors > 0)
-      ? liveDonors
-      : (CLINICAL_METRICS.donors || DEFAULT_DONORS_POOL.length || 1420);
-
-    const recipientsVal = (liveRecipients != null && liveRecipients > 0)
-      ? liveRecipients
-      : (CLINICAL_METRICS.recipients || DEFAULT_RECIPIENT_POOL.length || 846);
-
-    const organsVal = (liveOrgans != null && liveOrgans > 0)
-      ? liveOrgans
-      : (CLINICAL_METRICS.available_organs || DEFAULT_AVAILABLE_ORGANS.length || 38);
-
-    const transplantsVal = (liveTransplants != null && liveTransplants > 0)
-      ? liveTransplants
-      : (CLINICAL_METRICS.transplants_completed || 1290);
-
-    if (metricDonors) metricDonors.textContent = Number(donorsVal).toLocaleString();
-    if (metricRecipients) metricRecipients.textContent = Number(recipientsVal).toLocaleString();
-    if (metricOrgans) metricOrgans.textContent = Number(organsVal).toLocaleString();
-    if (metricTransplants) metricTransplants.textContent = Number(transplantsVal).toLocaleString();
+      if (donorsRes && donorsRes.count != null) {
+        dynamicDonors = Math.max(dynamicDonors, Number(donorsRes.count));
+      }
+      if (recipientsRes && recipientsRes.count != null) {
+        dynamicRecipients = Math.max(dynamicRecipients, Number(recipientsRes.count));
+      }
+      if (organsRes && organsRes.count != null) {
+        dynamicOrgans = Math.max(dynamicOrgans, Number(organsRes.count));
+      }
+      if (matchesRes && matchesRes.count != null) {
+        dynamicTransplants = Math.max(dynamicTransplants, Number(matchesRes.count));
+      }
+    }
   } catch (err) {
-    console.warn('[Clinical Portal] Live metrics query notice, applying data.json metrics:', err);
-    if (metricDonors) metricDonors.textContent = Number(CLINICAL_METRICS.donors || DEFAULT_DONORS_POOL.length || 1420).toLocaleString();
-    if (metricRecipients) metricRecipients.textContent = Number(CLINICAL_METRICS.recipients || DEFAULT_RECIPIENT_POOL.length || 846).toLocaleString();
-    if (metricOrgans) metricOrgans.textContent = Number(CLINICAL_METRICS.available_organs || DEFAULT_AVAILABLE_ORGANS.length || 38).toLocaleString();
-    if (metricTransplants) metricTransplants.textContent = Number(CLINICAL_METRICS.transplants_completed || 1290).toLocaleString();
+    console.warn('[Clinical Portal] Live metrics query notice, applying baseline with dynamic data:', err);
   }
+
+  // Calculate totals: baseline + dynamic count so dashboard always looks full and reacts to new registrations
+  const finalDonors = baseDonors + dynamicDonors;
+  const finalRecipients = baseRecipients + dynamicRecipients;
+  const finalOrgans = baseOrgans + dynamicOrgans;
+  const finalTransplants = baseTransplants + dynamicTransplants;
+
+  if (metricDonors) metricDonors.textContent = Number(finalDonors).toLocaleString('en-US');
+  if (metricRecipients) metricRecipients.textContent = Number(finalRecipients).toLocaleString('en-US');
+  if (metricOrgans) metricOrgans.textContent = Number(finalOrgans).toLocaleString('en-US');
+  if (metricTransplants) metricTransplants.textContent = Number(finalTransplants).toLocaleString('en-US');
 }
+
+/**
+ * Convenience alias for updateMetricsDisplay
+ */
+function updateMetricsDisplay() {
+  return loadDashboardMetrics();
+}
+
+window.loadDashboardMetrics = loadDashboardMetrics;
+window.updateMetricsDisplay = updateMetricsDisplay;
 
 /**
  * ============================================================================
@@ -403,6 +441,9 @@ async function handleDonorSignup(e) {
       id: 'DNR-' + Date.now().toString().slice(-4),
       ...donorRecord
     };
+
+    // Increment session dynamic donor registration count
+    sessionRegistrations.donors++;
 
     showAlert(alertBox, `Donor registration authorized for ${fullName}. Entering Clinical Dashboard...`, 'success');
 
@@ -581,6 +622,9 @@ async function handleRecipientSignup(e) {
       id: 'REC-' + Date.now().toString().slice(-4),
       ...recipientRecord
     };
+
+    // Increment session dynamic waitlist recipient enrollment count
+    sessionRegistrations.recipients++;
 
     showAlert(alertBox, `Recipient profile enrolled for ${fullName}. Entering Waitlist Dashboard...`, 'success');
 
@@ -1265,6 +1309,9 @@ function approveContactRequest(requestId, recipientEmail, recipientName, donorEm
   if (localReq) {
     localReq.status = 'approved';
   }
+
+  // Increment dynamic completed transplants / matches count
+  sessionRegistrations.transplants++;
 
   // 2. IMMEDIATELY following update, execute EmailJS payload
   emailjs.send("service_pf8kr4v", "template_2jwt66l", {

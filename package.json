@@ -19,5 +19,8 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "serve": "^14.2.4"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0"
   }
 }
