@@ -45,6 +45,20 @@ CREATE TABLE IF NOT EXISTS organs_available (
     recovery_time TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 4. Contact Requests Table (Recipient <-> Donor Permission Workflow)
+CREATE TABLE IF NOT EXISTS contact_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    donor_id TEXT,
+    donor_name TEXT,
+    donor_email TEXT,
+    recipient_id TEXT,
+    recipient_name TEXT,
+    recipient_email TEXT,
+    organ_requested TEXT,
+    status TEXT DEFAULT 'pending', -- 'pending', 'approved', 'declined'
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Backward compatibility view for legacy queries
 CREATE OR REPLACE VIEW available_organs AS SELECT id AS organ_id, organ_type, blood_group, hospital AS procurement_hospital, recovery_time FROM organs_available;
 CREATE OR REPLACE VIEW waitlist_candidates AS SELECT id AS candidate_id, full_name, organ_needed, blood_group, urgency AS urgency_status, urgency AS urgency_tier FROM recipients;
@@ -56,15 +70,21 @@ CREATE OR REPLACE VIEW waitlist_candidates AS SELECT id AS candidate_id, full_na
 ALTER TABLE donors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recipients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organs_available ENABLE ROW LEVEL SECURITY;
+ALTER TABLE contact_requests ENABLE ROW LEVEL SECURITY;
 
 -- Select policies
 CREATE POLICY "Allow public select on donors" ON donors FOR SELECT USING (true);
 CREATE POLICY "Allow public select on recipients" ON recipients FOR SELECT USING (true);
 CREATE POLICY "Allow public select on organs_available" ON organs_available FOR SELECT USING (true);
+CREATE POLICY "Allow public select on contact_requests" ON contact_requests FOR SELECT USING (true);
 
--- Insert policies (Form Submissions)
+-- Insert policies (Form Submissions & Requests)
 CREATE POLICY "Allow public insert on donors" ON donors FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public insert on recipients" ON recipients FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public insert on contact_requests" ON contact_requests FOR INSERT WITH CHECK (true);
+
+-- Update policies (Approval Workflow)
+CREATE POLICY "Allow public update on contact_requests" ON contact_requests FOR UPDATE USING (true);
 
 -- ============================================================================
 -- RPC FUNCTION: find_matches_for_organ
