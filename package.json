@@ -1,0 +1,23 @@
+{
+  "name": "organ-allocation-network",
+  "version": "1.0.0",
+  "description": "National Organ Allocation Network - Production Clinical Operations Portal",
+  "main": "index.html",
+  "scripts": {
+    "start": "serve .",
+    "dev": "serve .",
+    "validate": "node --check app.js"
+  },
+  "keywords": [
+    "organ-allocation",
+    "transplantation",
+    "clinical",
+    "healthcare",
+    "portal"
+  ],
+  "author": "National Organ Allocation Network",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "serve": "^14.2.4"
+  }
+}
