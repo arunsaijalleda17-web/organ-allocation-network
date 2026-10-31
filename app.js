@@ -1,3 +1,6 @@
+// Initialize EmailJS with public key
+emailjs.init("XxeczS7gEz6W0lXug");
+
 /**
  * ============================================================================
  * NATIONAL ORGAN ALLOCATION NETWORK
@@ -699,7 +702,21 @@ function openAllocationOfferModal(candidateId, candidateName, organType, score, 
     organ_matched: resolvedOrgan,
     share_contact_consent: shareContactConsent,
     score: resolvedScore,
-    urgency: resolvedUrgency
+    urgency: resolvedUrgency,
+    donor: {
+      full_name: donorName,
+      email: donorEmail,
+      share_contact_consent: shareContactConsent
+    },
+    recipient: {
+      id: candidateId,
+      full_name: resolvedName,
+      email: recipientEmail,
+      organ_needed: resolvedOrgan
+    },
+    organ: {
+      organ_type: resolvedOrgan
+    }
   };
 
   const modal = document.getElementById('offerModal');
@@ -745,57 +762,55 @@ function setupOfferModal() {
     if (e.target === modal) closeModal();
   });
 
-  // Transmit Allocation Offer click handler with n8n Webhook POST request
+  // Transmit Allocation Offer click handler with EmailJS integration
   if (confirmBtn) {
-    confirmBtn.addEventListener('click', async () => {
-      confirmBtn.disabled = true;
-      const originalText = confirmBtn.innerHTML;
-      confirmBtn.innerHTML = 'Transmitting Allocation Offer...';
-
-      // JSON payload required: Recipient Name & Email, Donor Name & Email, Organ Matched, share_contact_consent
-      const webhookPayload = {
-        recipient_name: activeOfferData.recipient_name,
-        recipient_email: activeOfferData.recipient_email,
-        donor_name: activeOfferData.donor_name,
-        donor_email: activeOfferData.donor_email,
-        organ_matched: activeOfferData.organ_matched,
-        share_contact_consent: activeOfferData.share_contact_consent,
-        // CamelCase variants for flexible n8n node parameter mapping
-        recipientName: activeOfferData.recipient_name,
-        recipientEmail: activeOfferData.recipient_email,
-        donorName: activeOfferData.donor_name,
-        donorEmail: activeOfferData.donor_email,
-        organMatched: activeOfferData.organ_matched,
-        shareContactConsent: activeOfferData.share_contact_consent,
-        timestamp: new Date().toISOString()
+    confirmBtn.addEventListener('click', () => {
+      // Access the selected donor, recipient, and organ objects from matching data
+      const donor = activeOfferData.donor || {
+        full_name: activeOfferData.donor_name,
+        email: activeOfferData.donor_email,
+        share_contact_consent: activeOfferData.share_contact_consent
       };
 
-      try {
-        console.log('[Webhook] Dispatching allocation offer payload to n8n:', N8N_WEBHOOK_URL, webhookPayload);
-        const response = await fetch(N8N_WEBHOOK_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(webhookPayload)
-        });
-        console.log('[Webhook] n8n response received, status:', response.status);
-      } catch (webhookErr) {
-        console.warn('[Webhook] n8n Webhook notification dispatch notice:', webhookErr);
+      const recipient = activeOfferData.recipient || {
+        full_name: activeOfferData.recipient_name,
+        email: activeOfferData.recipient_email,
+        organ_needed: activeOfferData.organ_matched
+      };
+
+      const organ = activeOfferData.organ || {
+        organ_type: activeOfferData.organ_matched
+      };
+
+      let donorContact = "The donor has opted to remain anonymous.";
+      if (donor.share_contact_consent) {
+          donorContact = `Donor Email: ${donor.email}`;
       }
 
-      closeModal();
-      confirmBtn.disabled = false;
-      confirmBtn.innerHTML = originalText;
+      const originalBtnText = confirmBtn.innerHTML;
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = 'Transmitting Offer...';
 
-      const alertBox = document.getElementById('matchingAlert');
-      if (alertBox) {
-        showAlert(
-          alertBox, 
-          `Official allocation offer transmitted for ${activeOfferData.recipient_name} (${activeOfferData.organ_matched}). Email dispatch webhook triggered successfully.`, 
-          'success'
-        );
-      }
+      emailjs.send("service_pf8kr4v", "template_2jwt66l", {
+          to_email: recipient.email,
+          recipient_name: recipient.full_name,
+          organ_matched: organ.organ_type,
+          donor_contact_info: donorContact
+      }).then(() => {
+          // Close modal and show success alert
+          const offerModalEl = document.getElementById('offerModal');
+          if (offerModalEl) {
+            offerModalEl.classList.remove('active');
+            offerModalEl.style.display = 'none';
+          }
+          showAlert(document.getElementById('matchingAlert'), 'Allocation offer and email notification transmitted successfully to the recipient.', 'success');
+      }).catch((err) => {
+          console.error('Email failed:', err);
+          showAlert(document.getElementById('matchingAlert'), 'Failed to transmit email notification. Please check console.', 'error');
+      }).finally(() => {
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = originalBtnText;
+      });
     });
   }
 }
