@@ -9,22 +9,32 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS donors (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     full_name TEXT NOT NULL,
+    email TEXT,
     age INT NOT NULL,
     blood_group TEXT NOT NULL,
     consent BOOLEAN NOT NULL DEFAULT TRUE,
+    organs_pledged TEXT,
+    share_contact_consent BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE donors ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE donors ADD COLUMN IF NOT EXISTS organs_pledged TEXT;
+ALTER TABLE donors ADD COLUMN IF NOT EXISTS share_contact_consent BOOLEAN DEFAULT FALSE;
 
 -- 2. Recipients Table (Waitlist)
 CREATE TABLE IF NOT EXISTS recipients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     full_name TEXT NOT NULL,
+    email TEXT,
     age INT NOT NULL,
     blood_group TEXT NOT NULL,
     organ_needed TEXT NOT NULL,
     urgency TEXT NOT NULL, -- 'Critical', 'High', 'Medium', 'Low'
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE recipients ADD COLUMN IF NOT EXISTS email TEXT;
 
 -- 3. Available Organs Table
 CREATE TABLE IF NOT EXISTS organs_available (

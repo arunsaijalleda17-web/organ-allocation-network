@@ -128,6 +128,22 @@
               >
             </div>
 
+            <!-- Email Address -->
+            <div class="form-group">
+              <label for="donorEmail" class="form-label">
+                <span>Email Address</span>
+                <span class="required-indicator">*</span>
+              </label>
+              <input 
+                type="email" 
+                id="donorEmail" 
+                name="email" 
+                class="form-input" 
+                placeholder="donor.name@example.org" 
+                required
+              >
+            </div>
+
             <!-- Age -->
             <div class="form-group">
               <label for="donorAge" class="form-label">
@@ -165,7 +181,54 @@
               </select>
             </div>
 
-            <!-- Consent Checkbox -->
+            <!-- Pledged Organs Selection -->
+            <div class="form-group">
+              <label class="form-label">
+                <span>Pledged Organs</span>
+                <span class="required-indicator">*</span>
+              </label>
+              <div class="pledged-organs-grid">
+                <label class="organ-checkbox-label">
+                  <input type="checkbox" name="organs_pledged" value="Kidney" class="organ-checkbox" checked>
+                  <span>Kidney</span>
+                </label>
+                <label class="organ-checkbox-label">
+                  <input type="checkbox" name="organs_pledged" value="Heart" class="organ-checkbox">
+                  <span>Heart</span>
+                </label>
+                <label class="organ-checkbox-label">
+                  <input type="checkbox" name="organs_pledged" value="Liver" class="organ-checkbox">
+                  <span>Liver</span>
+                </label>
+                <label class="organ-checkbox-label">
+                  <input type="checkbox" name="organs_pledged" value="Lungs" class="organ-checkbox">
+                  <span>Lungs</span>
+                </label>
+                <label class="organ-checkbox-label">
+                  <input type="checkbox" name="organs_pledged" value="Pancreas" class="organ-checkbox">
+                  <span>Pancreas</span>
+                </label>
+                <label class="organ-checkbox-label">
+                  <input type="checkbox" name="organs_pledged" value="Cornea" class="organ-checkbox">
+                  <span>Cornea</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Scrollable Terms and Conditions Box -->
+            <div class="form-group">
+              <label class="form-label">
+                <span>Terms and Conditions</span>
+              </label>
+              <div class="terms-container">
+                <p><strong>1. Informed Consent &amp; Legal Authorization:</strong> By enrolling in the National Organ Allocation Network, you affirm that this anatomical gift declaration is voluntary, legally binding, and executed in accordance with national anatomical gift regulations and federal healthcare directives.</p>
+                <p><strong>2. Histocompatibility &amp; Medical Evaluation:</strong> Donated organs are allocated strictly on the basis of biological compatibility (ABO typing, HLA crossmatching, antigen antibodies), medical urgency tier, and cold ischemia preservation windows. No commercial or discriminatory factors govern distribution.</p>
+                <p><strong>3. Data Privacy &amp; Clinical Information:</strong> Protected health information is guarded pursuant to national healthcare data privacy standards. Clinical records are utilized solely by accredited Organ Procurement Organizations (OPOs) and transplant surgical teams.</p>
+                <p><strong>4. Contact Information Disclosure:</strong> Contact details are held strictly confidential and will only be shared with the matched recipient or recipient's clinical team if explicit mutual consent is provided below.</p>
+              </div>
+            </div>
+
+            <!-- Legal Consent Checkbox -->
             <div class="checkbox-group">
               <input 
                 type="checkbox" 
@@ -176,6 +239,19 @@
               >
               <label for="donorConsent" class="checkbox-label">
                 I hereby verify that clinical and legal authorization has been documented for organ donation in compliance with national transplant regulations.
+              </label>
+            </div>
+
+            <!-- Share Contact Information Consent Checkbox -->
+            <div class="checkbox-group" style="margin-top: 0.75rem;">
+              <input 
+                type="checkbox" 
+                id="donorShareConsent" 
+                name="share_contact_consent" 
+                class="checkbox-input"
+              >
+              <label for="donorShareConsent" class="checkbox-label">
+                I consent to share my contact information with the recipient if a successful match is finalized.
               </label>
             </div>
 
@@ -214,6 +290,22 @@
                 name="full_name" 
                 class="form-input" 
                 placeholder="Enter recipient's full legal name" 
+                required
+              >
+            </div>
+
+            <!-- Email Address -->
+            <div class="form-group">
+              <label for="recipientEmail" class="form-label">
+                <span>Email Address</span>
+                <span class="required-indicator">*</span>
+              </label>
+              <input 
+                type="email" 
+                id="recipientEmail" 
+                name="email" 
+                class="form-input" 
+                placeholder="recipient.name@example.org" 
                 required
               >
             </div>
@@ -359,6 +451,7 @@
                   <th>Urgency Tier</th>
                   <th>Compatibility Score</th>
                   <th>Compatibility Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody id="matchingResultsBody">
@@ -385,6 +478,54 @@
     </section>
 
   </main>
+
+  <!-- Allocation Offer Confirmation Modal -->
+  <div id="offerModal" class="modal-overlay">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3>Initiate Official Organ Allocation Offer</h3>
+        <button class="modal-close-btn" id="modalCloseBtn" aria-label="Close dialog">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.9rem; color: var(--text-slate-muted); line-height: 1.5;">
+          You are preparing an official organ allocation offer under the National Organ Procurement Protocol. The candidate's transplant center team will receive an immediate electronic notification with clinical crossmatch data.
+        </p>
+        
+        <div style="background: var(--bg-slate-light); border: 1px solid var(--border-slate); border-radius: var(--radius-md); padding: 1rem;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.85rem;">
+            <div>
+              <span style="color: var(--text-slate-light); display: block; font-size: 0.75rem; text-transform: uppercase;">Candidate ID:</span>
+              <strong id="modalCandidateId" style="color: var(--color-medical-dark); font-family: var(--font-mono);">--</strong>
+            </div>
+            <div>
+              <span style="color: var(--text-slate-light); display: block; font-size: 0.75rem; text-transform: uppercase;">Selected Organ:</span>
+              <strong id="modalOrganType" style="color: var(--color-medical-dark);">--</strong>
+            </div>
+            <div>
+              <span style="color: var(--text-slate-light); display: block; font-size: 0.75rem; text-transform: uppercase;">Compatibility Score:</span>
+              <strong id="modalScore" style="color: var(--color-sterile); font-family: var(--font-mono);">--</strong>
+            </div>
+            <div>
+              <span style="color: var(--text-slate-light); display: block; font-size: 0.75rem; text-transform: uppercase;">Clinical Urgency Tier:</span>
+              <span id="modalUrgency">--</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-size: 0.8rem; color: var(--text-slate-muted); display: flex; align-items: center; gap: 0.5rem;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Transplant center will have 60 minutes to accept or decline before cascading to candidate #2.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-outline" id="modalCancelBtn" style="color: var(--text-slate-dark); border-color: var(--border-slate);">Cancel</button>
+        <button class="btn-primary" id="modalConfirmBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Transmit Allocation Offer
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Institutional Medical Footer -->
   <footer class="site-footer">

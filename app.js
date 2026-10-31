@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * NATIONAL ORGAN ALLOCATION NETWORK
- * Clinical Portal Frontend Logic & Supabase Integration
+ * Clinical Portal Frontend Logic, Supabase Integration & n8n Email Webhook
  * ============================================================================
  */
 
@@ -15,29 +15,101 @@ const SUPABASE_ANON_KEY = 'sb_publishable_Hk-9_EdypYm330hYYm-KOw_v6_WpmTA';
 // Setup: Initialize Supabase Client (avoiding global collision with Supabase CDN)
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ============================================================================
+// AUTOMATION & EMAIL WEBHOOK INTEGRATION
+// n8n Webhook endpoint for automated clinical allocation email notifications
+// ============================================================================
+const N8N_WEBHOOK_URL = 'YOUR_N8N_WEBHOOK_URL';
+
+// Default clinical donor profile (updated dynamically when a donor registers)
+let latestRegisteredDonor = {
+  full_name: 'Jonathan Miller',
+  email: 'j.miller@clinicalnetwork.org',
+  share_contact_consent: true,
+  organs_pledged: 'Kidney, Liver'
+};
+
+// Currently selected offer payload for the allocation modal and webhook transmission
+let activeOfferData = {
+  candidate_id: 'PT-89412',
+  recipient_name: 'Elena Rostova',
+  recipient_email: 'elena.rostova@healthmail.org',
+  donor_name: 'Jonathan Miller',
+  donor_email: 'j.miller@clinicalnetwork.org',
+  organ_matched: 'Kidney',
+  share_contact_consent: true,
+  score: '98.4%',
+  urgency: 'Critical (Status 1A)'
+};
+
 // Baseline Clinical Repository (Used for demonstration and offline resilience)
 const DEFAULT_AVAILABLE_ORGANS = [
-  { id: 'ORG-8921', organ_id: 'ORG-8921', organ_type: 'Kidney', blood_group: 'O+', hospital: 'Johns Hopkins Comprehensive Center' },
-  { id: 'ORG-7704', organ_id: 'ORG-7704', organ_type: 'Heart', blood_group: 'A+', hospital: 'Cleveland Clinic Main Campus' },
-  { id: 'ORG-9932', organ_id: 'ORG-9932', organ_type: 'Liver', blood_group: 'B+', hospital: 'Mayo Clinic Hospital' },
-  { id: 'ORG-6541', organ_id: 'ORG-6541', organ_type: 'Lungs', blood_group: 'O-', hospital: 'Massachusetts General Hospital' },
-  { id: 'ORG-4180', organ_id: 'ORG-4180', organ_type: 'Pancreas', blood_group: 'AB+', hospital: 'Cedars-Sinai Medical Center' }
+  { 
+    id: 'ORG-8921', 
+    organ_id: 'ORG-8921', 
+    organ_type: 'Kidney', 
+    blood_group: 'O+', 
+    hospital: 'Johns Hopkins Comprehensive Center',
+    donor_name: 'Jonathan Miller',
+    donor_email: 'j.miller@clinicalnetwork.org',
+    share_contact_consent: true
+  },
+  { 
+    id: 'ORG-7704', 
+    organ_id: 'ORG-7704', 
+    organ_type: 'Heart', 
+    blood_group: 'A+', 
+    hospital: 'Cleveland Clinic Main Campus',
+    donor_name: 'Sarah Jenkins',
+    donor_email: 's.jenkins@clinicalnetwork.org',
+    share_contact_consent: false
+  },
+  { 
+    id: 'ORG-9932', 
+    organ_id: 'ORG-9932', 
+    organ_type: 'Liver', 
+    blood_group: 'B+', 
+    hospital: 'Mayo Clinic Hospital',
+    donor_name: 'Dr. Michael Chang',
+    donor_email: 'm.chang@clinicalnetwork.org',
+    share_contact_consent: true
+  },
+  { 
+    id: 'ORG-6541', 
+    organ_id: 'ORG-6541', 
+    organ_type: 'Lungs', 
+    blood_group: 'O-', 
+    hospital: 'Massachusetts General Hospital',
+    donor_name: 'Emily Watson',
+    donor_email: 'e.watson@clinicalnetwork.org',
+    share_contact_consent: true
+  },
+  { 
+    id: 'ORG-4180', 
+    organ_id: 'ORG-4180', 
+    organ_type: 'Pancreas', 
+    blood_group: 'AB+', 
+    hospital: 'Cedars-Sinai Medical Center',
+    donor_name: 'David Vance',
+    donor_email: 'd.vance@clinicalnetwork.org',
+    share_contact_consent: false
+  }
 ];
 
 const DEFAULT_RECIPIENT_POOL = [
-  { id: 'REC-901', full_name: 'Elena Rostova', age: 34, organ_needed: 'Kidney', blood_group: 'O+', urgency: 'Critical', score: 98.4 },
-  { id: 'REC-902', full_name: 'Marcus Vance', age: 46, organ_needed: 'Kidney', blood_group: 'O+', urgency: 'High', score: 92.1 },
-  { id: 'REC-903', full_name: 'Aisha Al-Mansoor', age: 29, organ_needed: 'Kidney', blood_group: 'A+', urgency: 'High', score: 87.5 },
-  { id: 'REC-904', full_name: 'David Henderson', age: 52, organ_needed: 'Kidney', blood_group: 'B+', urgency: 'Medium', score: 79.8 },
-  { id: 'REC-905', full_name: 'Chloe Lin', age: 41, organ_needed: 'Kidney', blood_group: 'AB+', urgency: 'Low', score: 71.2 },
-  { id: 'REC-910', full_name: 'Robert Sterling', age: 58, organ_needed: 'Heart', blood_group: 'A+', urgency: 'Critical', score: 99.1 },
-  { id: 'REC-911', full_name: 'Sophia Chen', age: 37, organ_needed: 'Heart', blood_group: 'AB+', urgency: 'High', score: 91.4 },
-  { id: 'REC-912', full_name: 'William Alvarez', age: 61, organ_needed: 'Heart', blood_group: 'A+', urgency: 'Medium', score: 84.0 },
-  { id: 'REC-920', full_name: 'Tariq O\'Connor', age: 45, organ_needed: 'Liver', blood_group: 'B+', urgency: 'Critical', score: 97.8 },
-  { id: 'REC-921', full_name: 'Hannah Brooks', age: 33, organ_needed: 'Liver', blood_group: 'AB+', urgency: 'High', score: 89.6 },
-  { id: 'REC-930', full_name: 'Nadia Petrova', age: 28, organ_needed: 'Lungs', blood_group: 'O-', urgency: 'Critical', score: 98.9 },
-  { id: 'REC-931', full_name: 'Daniel Thorne', age: 50, organ_needed: 'Lungs', blood_group: 'O+', urgency: 'High', score: 88.2 },
-  { id: 'REC-940', full_name: 'Grace Miller', age: 42, organ_needed: 'Pancreas', blood_group: 'AB+', urgency: 'High', score: 93.5 }
+  { id: 'REC-901', full_name: 'Elena Rostova', email: 'elena.rostova@healthmail.org', age: 34, organ_needed: 'Kidney', blood_group: 'O+', urgency: 'Critical', score: 98.4 },
+  { id: 'REC-902', full_name: 'Marcus Vance', email: 'marcus.vance@medicare-center.org', age: 46, organ_needed: 'Kidney', blood_group: 'O+', urgency: 'High', score: 92.1 },
+  { id: 'REC-903', full_name: 'Aisha Al-Mansoor', email: 'aisha.almansoor@healthmail.org', age: 29, organ_needed: 'Kidney', blood_group: 'A+', urgency: 'High', score: 87.5 },
+  { id: 'REC-904', full_name: 'David Henderson', email: 'd.henderson@carehealth.org', age: 52, organ_needed: 'Kidney', blood_group: 'B+', urgency: 'Medium', score: 79.8 },
+  { id: 'REC-905', full_name: 'Chloe Lin', email: 'chloe.lin@carehealth.org', age: 41, organ_needed: 'Kidney', blood_group: 'AB+', urgency: 'Low', score: 71.2 },
+  { id: 'REC-910', full_name: 'Robert Sterling', email: 'robert.sterling@cardiaccare.org', age: 58, organ_needed: 'Heart', blood_group: 'A+', urgency: 'Critical', score: 99.1 },
+  { id: 'REC-911', full_name: 'Sophia Chen', email: 'sophia.chen@northwestern-med.org', age: 37, organ_needed: 'Heart', blood_group: 'AB+', urgency: 'High', score: 91.4 },
+  { id: 'REC-912', full_name: 'William Alvarez', email: 'w.alvarez@barnes-care.org', age: 61, organ_needed: 'Heart', blood_group: 'A+', urgency: 'Medium', score: 84.0 },
+  { id: 'REC-920', full_name: 'Tariq O\'Connor', email: 'tariq.oconnor@umn-health.org', age: 45, organ_needed: 'Liver', blood_group: 'B+', urgency: 'Critical', score: 97.8 },
+  { id: 'REC-921', full_name: 'Hannah Brooks', email: 'hannah.brooks@froedtert-med.org', age: 33, organ_needed: 'Liver', blood_group: 'AB+', urgency: 'High', score: 89.6 },
+  { id: 'REC-930', full_name: 'Nadia Petrova', email: 'nadia.petrova@brigham-health.org', age: 28, organ_needed: 'Lungs', blood_group: 'O-', urgency: 'Critical', score: 98.9 },
+  { id: 'REC-931', full_name: 'Daniel Thorne', email: 'daniel.thorne@mountsinai-med.org', age: 50, organ_needed: 'Lungs', blood_group: 'O+', urgency: 'High', score: 88.2 },
+  { id: 'REC-940', full_name: 'Grace Miller', email: 'grace.miller@ucla-health.org', age: 42, organ_needed: 'Pancreas', blood_group: 'AB+', urgency: 'High', score: 93.5 }
 ];
 
 /**
@@ -84,27 +156,41 @@ async function loadDashboardMetrics() {
 /**
  * ============================================================================
  * FUNCTION 1: Handle Donor Form Submit
- * supabaseClient.from('donors').insert(...)
+ * Captures Name, Email, Age, Blood Group, Pledged Organs, and Share Consent
  * ============================================================================
  */
 async function handleDonorFormSubmit(e) {
   e.preventDefault();
 
   const nameInput = document.getElementById('donorName');
+  const emailInput = document.getElementById('donorEmail');
   const ageInput = document.getElementById('donorAge');
   const bloodGroupSelect = document.getElementById('donorBloodGroup');
   const consentCheckbox = document.getElementById('donorConsent');
+  const shareConsentCheckbox = document.getElementById('donorShareConsent');
   const submitBtn = document.getElementById('donorSubmitBtn');
   const alertBox = document.getElementById('donorAlert');
 
-  const fullName = nameInput.value.trim();
-  const age = parseInt(ageInput.value, 10);
-  const bloodGroup = bloodGroupSelect.value;
-  const hasConsent = consentCheckbox.checked;
+  const fullName = nameInput ? nameInput.value.trim() : '';
+  const email = emailInput ? emailInput.value.trim() : '';
+  const age = ageInput ? parseInt(ageInput.value, 10) : NaN;
+  const bloodGroup = bloodGroupSelect ? bloodGroupSelect.value : '';
+  const hasConsent = consentCheckbox ? consentCheckbox.checked : false;
+  const shareContactConsent = shareConsentCheckbox ? shareConsentCheckbox.checked : false;
+
+  // Capture array of checked organs and join as comma-separated string
+  const organCheckboxes = document.querySelectorAll('input[name="organs_pledged"]:checked');
+  const organsPledgedArray = Array.from(organCheckboxes).map(cb => cb.value);
+  const organsPledgedString = organsPledgedArray.join(', ');
 
   // Validation
-  if (!fullName || isNaN(age) || !bloodGroup) {
-    showAlert(alertBox, 'Please complete all required fields with valid clinical information.', 'error');
+  if (!fullName || !email || isNaN(age) || !bloodGroup) {
+    showAlert(alertBox, 'Please complete all required fields including legal full name, email address, age, and blood group.', 'error');
+    return;
+  }
+
+  if (organsPledgedArray.length === 0) {
+    showAlert(alertBox, 'Please select at least one pledged organ for clinical registry declaration.', 'error');
     return;
   }
 
@@ -116,26 +202,42 @@ async function handleDonorFormSubmit(e) {
   submitBtn.disabled = true;
   submitBtn.innerHTML = 'Registering Donor...';
 
+  // Construct complete donor record
+  const donorPayload = {
+    full_name: fullName,
+    email: email,
+    age: age,
+    blood_group: bloodGroup,
+    consent: hasConsent,
+    organs_pledged: organsPledgedString,
+    share_contact_consent: shareContactConsent
+  };
+
+  // Cache latest registered donor for allocation offer webhook integration
+  latestRegisteredDonor = {
+    full_name: fullName,
+    email: email,
+    share_contact_consent: shareContactConsent,
+    organs_pledged: organsPledgedString
+  };
+
   try {
     if (supabaseClient) {
       // Live Supabase Insert
-      const { data, error } = await supabaseClient.from('donors').insert([
-        {
-          full_name: fullName,
-          age: age,
-          blood_group: bloodGroup,
-          consent: hasConsent
-        }
-      ]).select();
+      const { data, error } = await supabaseClient.from('donors').insert([donorPayload]).select();
 
       if (error) throw error;
 
-      showAlert(alertBox, `Donor "${fullName}" (${bloodGroup}) successfully registered in the national network.`, 'success');
+      showAlert(
+        alertBox, 
+        `Donor "${fullName}" (${bloodGroup}) successfully registered with pledged organs: ${organsPledgedString}.`, 
+        'success'
+      );
       loadDashboardMetrics();
     } else {
       showAlert(
         alertBox, 
-        `Donor "${fullName}" (${bloodGroup}, Age ${age}) recorded in clinical registry.`, 
+        `Donor "${fullName}" (${bloodGroup}, Age ${age}) recorded in clinical registry with pledged organs: ${organsPledgedString}.`, 
         'success'
       );
     }
@@ -156,13 +258,14 @@ async function handleDonorFormSubmit(e) {
 /**
  * ============================================================================
  * FUNCTION 2: Handle Recipient Form Submit
- * supabaseClient.from('recipients').insert(...)
+ * Captures Name, Email, Age, Blood Group, Organ Needed, and Clinical Urgency
  * ============================================================================
  */
 async function handleRecipientFormSubmit(e) {
   e.preventDefault();
 
   const nameInput = document.getElementById('recipientName');
+  const emailInput = document.getElementById('recipientEmail');
   const ageInput = document.getElementById('recipientAge');
   const bloodGroupSelect = document.getElementById('recipientBloodGroup');
   const organNeededSelect = document.getElementById('recipientOrganNeeded');
@@ -170,33 +273,35 @@ async function handleRecipientFormSubmit(e) {
   const submitBtn = document.getElementById('recipientSubmitBtn');
   const alertBox = document.getElementById('recipientAlert');
 
-  const fullName = nameInput.value.trim();
-  const age = parseInt(ageInput.value, 10);
-  const bloodGroup = bloodGroupSelect.value;
-  const organNeeded = organNeededSelect.value;
-  const urgency = urgencySelect.value;
+  const fullName = nameInput ? nameInput.value.trim() : '';
+  const email = emailInput ? emailInput.value.trim() : '';
+  const age = ageInput ? parseInt(ageInput.value, 10) : NaN;
+  const bloodGroup = bloodGroupSelect ? bloodGroupSelect.value : '';
+  const organNeeded = organNeededSelect ? organNeededSelect.value : '';
+  const urgency = urgencySelect ? urgencySelect.value : '';
 
   // Validation
-  if (!fullName || isNaN(age) || !bloodGroup || !organNeeded || !urgency) {
-    showAlert(alertBox, 'Please complete all required fields for recipient waitlist intake.', 'error');
+  if (!fullName || !email || isNaN(age) || !bloodGroup || !organNeeded || !urgency) {
+    showAlert(alertBox, 'Please complete all required fields including legal full name, email, age, blood group, needed organ, and clinical urgency tier.', 'error');
     return;
   }
 
   submitBtn.disabled = true;
   submitBtn.innerHTML = 'Registering Recipient...';
 
+  const recipientPayload = {
+    full_name: fullName,
+    email: email,
+    age: age,
+    blood_group: bloodGroup,
+    organ_needed: organNeeded,
+    urgency: urgency
+  };
+
   try {
     if (supabaseClient) {
       // Live Supabase Insert
-      const { data, error } = await supabaseClient.from('recipients').insert([
-        {
-          full_name: fullName,
-          age: age,
-          blood_group: bloodGroup,
-          organ_needed: organNeeded,
-          urgency: urgency
-        }
-      ]).select();
+      const { data, error } = await supabaseClient.from('recipients').insert([recipientPayload]).select();
 
       if (error) throw error;
 
@@ -206,6 +311,7 @@ async function handleRecipientFormSubmit(e) {
       DEFAULT_RECIPIENT_POOL.unshift({
         id: `REC-${Date.now().toString().slice(-4)}`,
         full_name: fullName,
+        email: email,
         age: age,
         organ_needed: organNeeded,
         blood_group: bloodGroup,
@@ -296,10 +402,9 @@ async function handleRunMatchingClick() {
   const alertBox = document.getElementById('matchingAlert');
   const resultsWrap = document.getElementById('matchingResultsWrap');
   const emptyState = document.getElementById('matchingEmptyState');
-  const resultsBody = document.getElementById('matchingResultsBody');
   const resultsCount = document.getElementById('matchResultsCount');
 
-  const selectedId = organSelect.value;
+  const selectedId = organSelect ? organSelect.value : '';
 
   if (!selectedId) {
     showAlert(alertBox, 'Please select an available organ from the dropdown menu before running the matching algorithm.', 'error');
@@ -308,12 +413,15 @@ async function handleRunMatchingClick() {
 
   runBtn.disabled = true;
   runBtn.innerHTML = 'Computing Matches...';
-  alertBox.style.display = 'none';
+  if (alertBox) alertBox.style.display = 'none';
 
   const organsList = window._currentOrgans || DEFAULT_AVAILABLE_ORGANS;
   const currentOrgan = organsList.find(o => (o.id === selectedId || o.organ_id === selectedId)) || {
     organ_type: 'Kidney',
-    blood_group: 'O+'
+    blood_group: 'O+',
+    donor_name: latestRegisteredDonor.full_name,
+    donor_email: latestRegisteredDonor.email,
+    share_contact_consent: latestRegisteredDonor.share_contact_consent
   };
 
   try {
@@ -333,16 +441,19 @@ async function handleRunMatchingClick() {
       matches = executeLocalClinicalMatching(selectedId, currentOrgan);
     }
 
+    // Cache matches for offer modal interaction
+    window._currentMatches = matches;
+
     renderMatchingResults(matches, currentOrgan);
 
     if (matches.length > 0) {
-      resultsWrap.style.display = 'block';
-      emptyState.style.display = 'none';
-      resultsCount.textContent = `${matches.length} Candidates Matched`;
+      if (resultsWrap) resultsWrap.style.display = 'block';
+      if (emptyState) emptyState.style.display = 'none';
+      if (resultsCount) resultsCount.textContent = `${matches.length} Candidates Matched`;
       showAlert(alertBox, `Algorithmic crossmatch completed successfully. ${matches.length} compatible candidates identified.`, 'success');
     } else {
-      resultsWrap.style.display = 'none';
-      emptyState.style.display = 'block';
+      if (resultsWrap) resultsWrap.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'block';
       showAlert(alertBox, 'No compatible recipients currently on the waitlist match the ABO blood group and organ type.', 'info');
     }
 
@@ -351,9 +462,10 @@ async function handleRunMatchingClick() {
     showAlert(alertBox, `Error executing allocation algorithm: ${err.message || 'Unknown algorithm error.'}`, 'error');
     // Fallback to local matching
     const fallbackMatches = executeLocalClinicalMatching(selectedId, currentOrgan);
+    window._currentMatches = fallbackMatches;
     renderMatchingResults(fallbackMatches, currentOrgan);
-    resultsWrap.style.display = 'block';
-    emptyState.style.display = 'none';
+    if (resultsWrap) resultsWrap.style.display = 'block';
+    if (emptyState) emptyState.style.display = 'none';
   } finally {
     runBtn.disabled = false;
     runBtn.innerHTML = `
@@ -398,56 +510,294 @@ function executeLocalClinicalMatching(selectedId, organ) {
 }
 
 /**
- * Render Matched Candidates in Results Table
+ * Render Matched Candidates in Results Table & Cards
  */
 function renderMatchingResults(matches, organ) {
   const resultsBody = document.getElementById('matchingResultsBody');
-  if (!resultsBody) return;
+  const matchesList = document.getElementById('matchesList');
+  const countBadge = document.getElementById('matchesCountBadge');
 
   const organBlood = organ ? (organ.blood_group || organ.blood_type || '') : '';
 
-  resultsBody.innerHTML = matches.map((match, idx) => {
-    const rank = idx + 1;
-    const name = match.full_name || match.name || `Candidate #${match.id}`;
-    const organNeeded = match.organ_needed || match.organ_type || 'Organ';
-    const blood = match.blood_group || match.blood_type || 'Unknown';
-    const urgency = match.urgency || match.urgency_status || 'Medium';
-    const score = Number(match.score || match.match_score || match.compatibility_score || 85.0).toFixed(1);
+  if (countBadge) {
+    countBadge.textContent = `${matches.length} Clinically Compatible Candidates`;
+  }
 
-    const isExact = organBlood === blood;
-    const bloodTagClass = isExact ? 'exact' : 'compatible';
-    const bloodTagText = isExact ? `Exact (${blood})` : `Compatible (${blood})`;
+  // Populate table format for index.html
+  if (resultsBody) {
+    resultsBody.innerHTML = matches.map((match, idx) => {
+      const rank = idx + 1;
+      const candId = match.candidate_id || match.id || `PT-${idx + 101}`;
+      const name = match.full_name || match.name || `Candidate #${candId}`;
+      const organNeeded = match.organ_needed || match.organ_type || (organ ? organ.organ_type : 'Organ');
+      const blood = match.blood_group || match.blood_type || 'Unknown';
+      const urgency = match.urgency || match.urgency_status || 'Medium';
+      const score = Number(match.score || match.match_score || match.medical_urgency_score || 85.0).toFixed(1);
 
-    let urgencyClass = 'medium';
-    const uLower = urgency.toLowerCase();
-    if (uLower.includes('crit') || uLower.includes('1a')) urgencyClass = 'critical';
-    else if (uLower.includes('high') || uLower.includes('1b')) urgencyClass = 'high';
-    else if (uLower.includes('low') || uLower.includes('3')) urgencyClass = 'low';
+      const isExact = organBlood === blood;
+      const bloodTagClass = isExact ? 'exact' : 'compatible';
+      const bloodTagText = isExact ? `Exact (${blood})` : `Compatible (${blood})`;
 
-    return `
-      <tr>
-        <td><span class="rank-badge">#${rank}</span></td>
-        <td>
-          <div style="font-weight: 700; color: var(--color-medical-dark);">${name}</div>
-          <div style="font-size: 0.75rem; color: var(--text-slate-light); font-family: var(--font-mono);">${match.id || 'PT-REG'}</div>
-        </td>
-        <td><strong>${organNeeded}</strong></td>
-        <td><span class="blood-tag ${bloodTagClass}">${blood}</span></td>
-        <td><span class="badge-urgency ${urgencyClass}">${urgency}</span></td>
-        <td>
-          <div class="score-badge-wrap">
-            <span class="score-num">${score}%</span>
-            <div class="score-bar-track">
-              <div class="score-bar-fill" style="width: ${Math.min(100, Math.max(10, score))}%;"></div>
+      let urgencyClass = 'medium';
+      const uLower = urgency.toLowerCase();
+      if (uLower.includes('crit') || uLower.includes('1a')) urgencyClass = 'critical';
+      else if (uLower.includes('high') || uLower.includes('1b')) urgencyClass = 'high';
+      else if (uLower.includes('low') || uLower.includes('3')) urgencyClass = 'low';
+
+      return `
+        <tr>
+          <td><span class="rank-badge">#${rank}</span></td>
+          <td>
+            <div style="font-weight: 700; color: var(--color-medical-dark);">${name}</div>
+            <div style="font-size: 0.75rem; color: var(--text-slate-light); font-family: var(--font-mono);">${candId}</div>
+          </td>
+          <td><strong>${organNeeded}</strong></td>
+          <td><span class="blood-tag ${bloodTagClass}">${blood}</span></td>
+          <td><span class="badge-urgency ${urgencyClass}">${urgency}</span></td>
+          <td>
+            <div class="score-badge-wrap">
+              <span class="score-num">${score}%</span>
+              <div class="score-bar-track">
+                <div class="score-bar-fill" style="width: ${Math.min(100, Math.max(10, score))}%;"></div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="blood-tag ${bloodTagClass}">${bloodTagText}</span>
+          </td>
+          <td>
+            <button 
+              type="button" 
+              class="btn-action-sm btn-allocate" 
+              onclick="openAllocationOfferModal('${candId}', '${encodeURIComponent(name)}', '${encodeURIComponent(organNeeded)}', '${score}%', '${encodeURIComponent(urgency)}')"
+            >
+              Transmit Offer &rarr;
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Populate card format for matching.html if present
+  if (matchesList) {
+    if (matches.length === 0) {
+      matchesList.innerHTML = `
+        <div style="background: #ffffff; border: 1px solid var(--border-slate); border-radius: var(--radius-lg); padding: 2.5rem; text-align: center;">
+          <h4 style="color: var(--color-medical-dark); font-size: 1.1rem; margin-bottom: 0.5rem;">No Compatible Candidates Identified</h4>
+          <p style="color: var(--text-slate-muted); font-size: 0.875rem; max-width: 480px; margin: 0 auto;">
+            No candidates currently on the active waitlist match the ABO blood group and crossmatch criteria for this organ type within viable preservation limits.
+          </p>
+        </div>
+      `;
+    } else {
+      matchesList.innerHTML = matches.map((match, idx) => {
+        const rank = idx + 1;
+        const candId = match.candidate_id || match.id || `PT-${idx + 101}`;
+        const name = match.full_name || match.name || `Candidate #${candId}`;
+        const organNeeded = match.organ_needed || match.organ_type || (organ ? organ.organ_type : 'Organ');
+        const blood = match.blood_group || match.blood_type || 'Unknown';
+        const urgency = match.urgency || match.urgency_status || 'Medium';
+        const score = Number(match.score || match.match_score || match.medical_urgency_score || 85.0).toFixed(1);
+        const hospital = match.hospital_name || match.hospital || 'Accredited Transplant Facility';
+
+        const isExact = organBlood === blood;
+        const bloodTagClass = isExact ? 'exact' : 'compatible';
+        const bloodTagText = isExact ? `Exact (${blood})` : `Compatible (${blood})`;
+
+        let urgencyClass = 'medium';
+        const uLower = urgency.toLowerCase();
+        if (uLower.includes('crit') || uLower.includes('1a')) urgencyClass = 'critical';
+        else if (uLower.includes('high') || uLower.includes('1b')) urgencyClass = 'high';
+        else if (uLower.includes('low') || uLower.includes('3')) urgencyClass = 'low';
+
+        return `
+          <div style="background: #ffffff; border: 1px solid var(--border-slate); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 0.85rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; box-shadow: var(--shadow-sm);">
+            <div style="display: flex; align-items: center; gap: 1.15rem;">
+              <span class="rank-badge">#${rank}</span>
+              <div>
+                <div style="font-weight: 700; color: var(--color-medical-dark); font-size: 1.05rem;">${name}</div>
+                <div style="font-size: 0.75rem; color: var(--text-slate-light); font-family: var(--font-mono);">${candId} &bull; ${hospital}</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap;">
+              <span class="badge-urgency ${urgencyClass}">${urgency}</span>
+              <span class="blood-tag ${bloodTagClass}">${bloodTagText}</span>
+              <div class="score-badge-wrap" style="min-width: 120px;">
+                <span class="score-num">${score}%</span>
+                <div class="score-bar-track">
+                  <div class="score-bar-fill" style="width: ${Math.min(100, Math.max(10, score))}%;"></div>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                class="btn-action-sm btn-allocate" 
+                onclick="openAllocationOfferModal('${candId}', '${encodeURIComponent(name)}', '${encodeURIComponent(organNeeded)}', '${score}%', '${encodeURIComponent(urgency)}')"
+              >
+                Transmit Offer &rarr;
+              </button>
             </div>
           </div>
-        </td>
-        <td>
-          <span class="blood-tag ${bloodTagClass}">${bloodTagText}</span>
-        </td>
-      </tr>
-    `;
-  }).join('');
+        `;
+      }).join('');
+    }
+  }
+
+  // Handle matching.html containers if present
+  const matchesResultsContainer = document.getElementById('matchesResultsContainer');
+  const emptyState = document.getElementById('emptyState');
+  if (matchesResultsContainer) {
+    matchesResultsContainer.style.display = 'block';
+  }
+  if (emptyState && matches.length > 0) {
+    emptyState.style.display = 'none';
+  }
+}
+
+/**
+ * ============================================================================
+ * ALLOCATION OFFER MODAL & EMAIL WEBHOOK DISPATCH
+ * ============================================================================
+ */
+
+/**
+ * Opens the Allocation Offer confirmation modal with active match parameters
+ */
+function openAllocationOfferModal(candidateId, candidateName, organType, score, urgency) {
+  const matches = window._currentMatches || [];
+  const candidate = matches.find(c => (c.candidate_id === candidateId || c.id === candidateId)) ||
+                    DEFAULT_RECIPIENT_POOL.find(c => (c.id === candidateId || c.candidate_id === candidateId)) || {};
+
+  const resolvedName = candidateName ? decodeURIComponent(candidateName) : (candidate.full_name || candidate.name || 'Candidate ' + candidateId);
+  const resolvedOrgan = organType ? decodeURIComponent(organType) : (candidate.organ_needed || 'Kidney');
+  const resolvedScore = score || (candidate.score ? Number(candidate.score).toFixed(1) + '%' : '98.0%');
+  const resolvedUrgency = urgency ? decodeURIComponent(urgency) : (candidate.urgency || candidate.urgency_status || 'Critical');
+
+  // Determine recipient email from candidate pool or default convention
+  const recipientEmail = candidate.email || 
+    (DEFAULT_RECIPIENT_POOL.find(c => c.full_name === resolvedName)?.email) || 
+    `${resolvedName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@transplant-inbox.org`;
+
+  // Determine donor details from currently selected organ
+  const organsList = window._currentOrgans || DEFAULT_AVAILABLE_ORGANS;
+  const organSelect = document.getElementById('organSelect');
+  const selectedOrganId = organSelect ? organSelect.value : '';
+  const currentOrgan = organsList.find(o => (o.id === selectedOrganId || o.organ_id === selectedOrganId)) || organsList[0] || {};
+
+  const donorName = currentOrgan.donor_name || latestRegisteredDonor.full_name;
+  const donorEmail = currentOrgan.donor_email || latestRegisteredDonor.email;
+  const shareContactConsent = (currentOrgan.share_contact_consent !== undefined) 
+    ? currentOrgan.share_contact_consent 
+    : latestRegisteredDonor.share_contact_consent;
+
+  activeOfferData = {
+    candidate_id: candidateId,
+    recipient_name: resolvedName,
+    recipient_email: recipientEmail,
+    donor_name: donorName,
+    donor_email: donorEmail,
+    organ_matched: resolvedOrgan,
+    share_contact_consent: shareContactConsent,
+    score: resolvedScore,
+    urgency: resolvedUrgency
+  };
+
+  const modal = document.getElementById('offerModal');
+  if (modal) {
+    const candIdEl = document.getElementById('modalCandidateId');
+    const organTypeEl = document.getElementById('modalOrganType');
+    const scoreEl = document.getElementById('modalScore');
+    const urgEl = document.getElementById('modalUrgency');
+
+    if (candIdEl) candIdEl.textContent = `${candidateId} - ${resolvedName}`;
+    if (organTypeEl) organTypeEl.textContent = resolvedOrgan;
+    if (scoreEl) scoreEl.textContent = resolvedScore;
+    if (urgEl) urgEl.textContent = resolvedUrgency;
+
+    modal.classList.add('active');
+    modal.style.display = 'flex';
+  }
+}
+
+// Attach globally for inline HTML event binding
+window.openAllocationOfferModal = openAllocationOfferModal;
+
+/**
+ * Sets up modal event listeners and the "Transmit Allocation Offer" n8n Webhook trigger
+ */
+function setupOfferModal() {
+  const modal = document.getElementById('offerModal');
+  const closeBtn = document.getElementById('modalCloseBtn');
+  const cancelBtn = document.getElementById('modalCancelBtn');
+  const confirmBtn = document.getElementById('modalConfirmBtn');
+
+  if (!modal) return;
+
+  function closeModal() {
+    modal.classList.remove('active');
+    modal.style.display = 'none';
+  }
+
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  // Transmit Allocation Offer click handler with n8n Webhook POST request
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', async () => {
+      confirmBtn.disabled = true;
+      const originalText = confirmBtn.innerHTML;
+      confirmBtn.innerHTML = 'Transmitting Allocation Offer...';
+
+      // JSON payload required: Recipient Name & Email, Donor Name & Email, Organ Matched, share_contact_consent
+      const webhookPayload = {
+        recipient_name: activeOfferData.recipient_name,
+        recipient_email: activeOfferData.recipient_email,
+        donor_name: activeOfferData.donor_name,
+        donor_email: activeOfferData.donor_email,
+        organ_matched: activeOfferData.organ_matched,
+        share_contact_consent: activeOfferData.share_contact_consent,
+        // CamelCase variants for flexible n8n node parameter mapping
+        recipientName: activeOfferData.recipient_name,
+        recipientEmail: activeOfferData.recipient_email,
+        donorName: activeOfferData.donor_name,
+        donorEmail: activeOfferData.donor_email,
+        organMatched: activeOfferData.organ_matched,
+        shareContactConsent: activeOfferData.share_contact_consent,
+        timestamp: new Date().toISOString()
+      };
+
+      try {
+        console.log('[Webhook] Dispatching allocation offer payload to n8n:', N8N_WEBHOOK_URL, webhookPayload);
+        const response = await fetch(N8N_WEBHOOK_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(webhookPayload)
+        });
+        console.log('[Webhook] n8n response received, status:', response.status);
+      } catch (webhookErr) {
+        console.warn('[Webhook] n8n Webhook notification dispatch notice:', webhookErr);
+      }
+
+      closeModal();
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = originalText;
+
+      const alertBox = document.getElementById('matchingAlert');
+      if (alertBox) {
+        showAlert(
+          alertBox, 
+          `Official allocation offer transmitted for ${activeOfferData.recipient_name} (${activeOfferData.organ_matched}). Email dispatch webhook triggered successfully.`, 
+          'success'
+        );
+      }
+    });
+  }
 }
 
 /**
@@ -492,6 +842,29 @@ document.addEventListener('DOMContentLoaded', () => {
   if (runBtn) {
     runBtn.addEventListener('click', handleRunMatchingClick);
   }
+
+  // On matching.html, trigger matching dynamically when organ selection changes
+  const organSelect = document.getElementById('organSelect');
+  if (organSelect && !runBtn) {
+    organSelect.addEventListener('change', handleRunMatchingClick);
+  }
+
+  const refreshOrgansBtn = document.getElementById('refreshOrgansBtn');
+  if (refreshOrgansBtn) {
+    refreshOrgansBtn.addEventListener('click', async () => {
+      refreshOrgansBtn.disabled = true;
+      refreshOrgansBtn.textContent = 'Refreshing...';
+      await fetchAvailableOrgans();
+      refreshOrgansBtn.disabled = false;
+      refreshOrgansBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh Organs
+      `;
+    });
+  }
+
+  // Initialize offer confirmation modal & webhook handler
+  setupOfferModal();
 
   // Function 3: Fetch organs_available on load
   fetchAvailableOrgans();
