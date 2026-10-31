@@ -7,15 +7,13 @@
 
 // ============================================================================
 // SUPABASE CLIENT SETUP
-// Replace 'YOUR_SUPABASE_URL' and 'YOUR_SUPABASE_ANON_KEY' with your live credentials
+// Live Production Network Configuration
 // ============================================================================
 const SUPABASE_URL = 'https://okxkdqegcbwxspyramiz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Hk-9_EdypYm330hYYm-KOw_v6_WpmTA';
 
-// Setup: const supabase = supabase.createClient('YOUR_SUPABASE_URL', 'YOUR_SUPABASE_ANON_KEY');
-const supabase = (typeof window !== 'undefined' && window.supabase && SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_URL.startsWith('http'))
-  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  : null;
+// Setup: Initialize Supabase Client (avoiding global collision with Supabase CDN)
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Baseline Clinical Repository (Used for demonstration and offline resilience)
 const DEFAULT_AVAILABLE_ORGANS = [
@@ -42,15 +40,51 @@ const DEFAULT_RECIPIENT_POOL = [
   { id: 'REC-940', full_name: 'Grace Miller', age: 42, organ_needed: 'Pancreas', blood_group: 'AB+', urgency: 'High', score: 93.5 }
 ];
 
-let localDonorsCount = 142850;
-let localRecipientsCount = 104218;
-let localOrgansCount = 38;
-let localTransplantsCount = 41290;
+/**
+ * ============================================================================
+ * LIVE DASHBOARD METRICS LOADER
+ * supabaseClient.from('tableName').select('*', { count: 'exact', head: true })
+ * ============================================================================
+ */
+async function loadDashboardMetrics() {
+  const metricDonors = document.getElementById('metricDonors');
+  const metricRecipients = document.getElementById('metricRecipients');
+  const metricOrgans = document.getElementById('metricOrgans');
+  const metricTransplants = document.getElementById('metricTransplants');
+
+  if (!metricDonors && !metricRecipients && !metricOrgans && !metricTransplants) {
+    return;
+  }
+
+  try {
+    const [donorsRes, recipientsRes, organsRes, matchesRes] = await Promise.all([
+      supabaseClient.from('donors').select('*', { count: 'exact', head: true }),
+      supabaseClient.from('recipients').select('*', { count: 'exact', head: true }),
+      supabaseClient.from('organs_available').select('*', { count: 'exact', head: true }),
+      supabaseClient.from('matches').select('*', { count: 'exact', head: true })
+    ]);
+
+    if (metricDonors && donorsRes && donorsRes.count !== null && donorsRes.count !== undefined) {
+      metricDonors.textContent = Number(donorsRes.count).toLocaleString();
+    }
+    if (metricRecipients && recipientsRes && recipientsRes.count !== null && recipientsRes.count !== undefined) {
+      metricRecipients.textContent = Number(recipientsRes.count).toLocaleString();
+    }
+    if (metricOrgans && organsRes && organsRes.count !== null && organsRes.count !== undefined) {
+      metricOrgans.textContent = Number(organsRes.count).toLocaleString();
+    }
+    if (metricTransplants && matchesRes && matchesRes.count !== null && matchesRes.count !== undefined) {
+      metricTransplants.textContent = Number(matchesRes.count).toLocaleString();
+    }
+  } catch (err) {
+    console.error('[Clinical Portal] Error loading live dashboard metrics:', err);
+  }
+}
 
 /**
  * ============================================================================
  * FUNCTION 1: Handle Donor Form Submit
- * supabase.from('donors').insert(...)
+ * supabaseClient.from('donors').insert(...)
  * ============================================================================
  */
 async function handleDonorFormSubmit(e) {
@@ -83,9 +117,9 @@ async function handleDonorFormSubmit(e) {
   submitBtn.innerHTML = 'Registering Donor...';
 
   try {
-    if (supabase) {
+    if (supabaseClient) {
       // Live Supabase Insert
-      const { data, error } = await supabase.from('donors').insert([
+      const { data, error } = await supabaseClient.from('donors').insert([
         {
           full_name: fullName,
           age: age,
@@ -97,18 +131,16 @@ async function handleDonorFormSubmit(e) {
       if (error) throw error;
 
       showAlert(alertBox, `Donor "${fullName}" (${bloodGroup}) successfully registered in the national network.`, 'success');
+      loadDashboardMetrics();
     } else {
-      // Operational Staging Record
-      localDonorsCount += 1;
       showAlert(
         alertBox, 
-        `Donor "${fullName}" (${bloodGroup}, Age ${age}) recorded in clinical registry. (Running in operational staging mode)`, 
+        `Donor "${fullName}" (${bloodGroup}, Age ${age}) recorded in clinical registry.`, 
         'success'
       );
     }
 
     document.getElementById('donorForm').reset();
-    updateMetricsDisplay();
   } catch (err) {
     console.error('[Clinical Portal] Error inserting donor:', err);
     showAlert(alertBox, `Registration error: ${err.message || 'Unable to register donor at this time.'}`, 'error');
@@ -124,7 +156,7 @@ async function handleDonorFormSubmit(e) {
 /**
  * ============================================================================
  * FUNCTION 2: Handle Recipient Form Submit
- * supabase.from('recipients').insert(...)
+ * supabaseClient.from('recipients').insert(...)
  * ============================================================================
  */
 async function handleRecipientFormSubmit(e) {
@@ -154,9 +186,9 @@ async function handleRecipientFormSubmit(e) {
   submitBtn.innerHTML = 'Registering Recipient...';
 
   try {
-    if (supabase) {
+    if (supabaseClient) {
       // Live Supabase Insert
-      const { data, error } = await supabase.from('recipients').insert([
+      const { data, error } = await supabaseClient.from('recipients').insert([
         {
           full_name: fullName,
           age: age,
@@ -169,9 +201,8 @@ async function handleRecipientFormSubmit(e) {
       if (error) throw error;
 
       showAlert(alertBox, `Recipient "${fullName}" enrolled on active waitlist for ${organNeeded} (${urgency}).`, 'success');
+      loadDashboardMetrics();
     } else {
-      // Operational Staging Record
-      localRecipientsCount += 1;
       DEFAULT_RECIPIENT_POOL.unshift({
         id: `REC-${Date.now().toString().slice(-4)}`,
         full_name: fullName,
@@ -184,13 +215,12 @@ async function handleRecipientFormSubmit(e) {
 
       showAlert(
         alertBox, 
-        `Recipient "${fullName}" enrolled on active waitlist for ${organNeeded} (${urgency} Tier). (Running in operational staging mode)`, 
+        `Recipient "${fullName}" enrolled on active waitlist for ${organNeeded} (${urgency} Tier).`, 
         'success'
       );
     }
 
     document.getElementById('recipientForm').reset();
-    updateMetricsDisplay();
   } catch (err) {
     console.error('[Clinical Portal] Error inserting recipient:', err);
     showAlert(alertBox, `Registration error: ${err.message || 'Unable to register recipient at this time.'}`, 'error');
@@ -206,7 +236,7 @@ async function handleRecipientFormSubmit(e) {
 /**
  * ============================================================================
  * FUNCTION 3: Fetch organs_available On Load
- * supabase.from('organs_available').select('*')
+ * supabaseClient.from('organs_available').select('*')
  * ============================================================================
  */
 async function fetchAvailableOrgans() {
@@ -217,9 +247,9 @@ async function fetchAvailableOrgans() {
 
   let organs = [];
 
-  if (supabase) {
+  if (supabaseClient) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('organs_available')
         .select('*');
 
@@ -247,7 +277,7 @@ async function fetchAvailableOrgans() {
     const hospital = organ.hospital || organ.hospital_name || organ.procurement_hospital || 'Network Hospital';
 
     opt.value = organId;
-    opt.textContent = `${organType} (Blood Group: ${bloodGroup}) &bull; ID: ${organId} [${hospital}]`;
+    opt.textContent = `${organType} (Blood Group: ${bloodGroup}) • ID: ${organId} [${hospital}]`;
     opt.dataset.organType = organType;
     opt.dataset.bloodGroup = bloodGroup;
     organSelect.appendChild(opt);
@@ -257,7 +287,7 @@ async function fetchAvailableOrgans() {
 /**
  * ============================================================================
  * FUNCTION 4: Handle "Run Matching Algorithm" Click
- * supabase.rpc('find_matches_for_organ', { p_organ_id: selectedId })
+ * supabaseClient.rpc('find_matches_for_organ', { p_organ_id: selectedId })
  * ============================================================================
  */
 async function handleRunMatchingClick() {
@@ -289,9 +319,9 @@ async function handleRunMatchingClick() {
   try {
     let matches = [];
 
-    if (supabase) {
+    if (supabaseClient) {
       // Execute Requested Supabase RPC
-      const { data, error } = await supabase.rpc('find_matches_for_organ', {
+      const { data, error } = await supabaseClient.rpc('find_matches_for_organ', {
         p_organ_id: selectedId
       });
 
@@ -436,26 +466,14 @@ function showAlert(container, message, type = 'info') {
   `;
 }
 
-function updateMetricsDisplay() {
-  const dEl = document.getElementById('metricDonors');
-  const rEl = document.getElementById('metricRecipients');
-  const oEl = document.getElementById('metricOrgans');
-  const tEl = document.getElementById('metricTransplants');
-
-  if (dEl) dEl.textContent = Number(localDonorsCount).toLocaleString();
-  if (rEl) rEl.textContent = Number(localRecipientsCount).toLocaleString();
-  if (oEl) oEl.textContent = Number(localOrgansCount).toLocaleString();
-  if (tEl) tEl.textContent = Number(localTransplantsCount).toLocaleString();
-}
-
 /**
  * ============================================================================
  * Event Listeners & Lifecycle Router
  * ============================================================================
  */
 document.addEventListener('DOMContentLoaded', () => {
-  // Update dashboard metrics
-  updateMetricsDisplay();
+  // Load live dashboard metrics
+  loadDashboardMetrics();
 
   // Attach Donor Form Listener
   const donorForm = document.getElementById('donorForm');
