@@ -445,6 +445,11 @@ async function handleDonorSignup(e) {
     // Increment session dynamic donor registration count
     sessionRegistrations.donors++;
 
+    // Add dynamically to local donor pool so matching engine accesses immediately without limit
+    if (!DEFAULT_DONORS_POOL.some(d => d.email === currentDonor.email)) {
+      DEFAULT_DONORS_POOL.unshift(currentDonor);
+    }
+
     showAlert(alertBox, `Donor registration authorized for ${fullName}. Entering Clinical Dashboard...`, 'success');
 
     setTimeout(() => {
@@ -625,6 +630,11 @@ async function handleRecipientSignup(e) {
 
     // Increment session dynamic waitlist recipient enrollment count
     sessionRegistrations.recipients++;
+
+    // Add dynamically to local recipient pool so allocation engine accesses immediately without limit
+    if (!DEFAULT_RECIPIENT_POOL.some(r => r.email === currentRecipient.email)) {
+      DEFAULT_RECIPIENT_POOL.unshift(currentRecipient);
+    }
 
     showAlert(alertBox, `Recipient profile enrolled for ${fullName}. Entering Waitlist Dashboard...`, 'success');
 
@@ -1397,9 +1407,9 @@ window.fetchAvailableOrgans = fetchAvailableOrgans;
 
 /**
  * Fallback Matching Engine: ABO Histocompatibility & Urgency Algorithm
- * Reads directly from DEFAULT_RECIPIENT_POOL (loaded dynamically from data.json)
+ * Reads dynamically from database recipients and DEFAULT_RECIPIENT_POOL with no artificial limits
  */
-function executeLocalClinicalMatching(selectedId, organ) {
+async function executeLocalClinicalMatching(selectedId, organ) {
   if (!organ) return [];
 
   const organType = (organ.organ_type || organ.type || 'Kidney').toLowerCase();
@@ -1417,15 +1427,37 @@ function executeLocalClinicalMatching(selectedId, organ) {
     'AB+': ['AB+']
   }[organBlood] || [organBlood];
 
-  // Filter directly from DEFAULT_RECIPIENT_POOL loaded from data.json
-  const filtered = DEFAULT_RECIPIENT_POOL.filter(cand => {
+  let candidatesList = [...DEFAULT_RECIPIENT_POOL];
+
+  // Retrieve entire waitlist from database without any limit
+  try {
+    if (supabaseClient) {
+      const { data, error } = await supabaseClient.from('recipients').select('*');
+      if (!error && data && data.length > 0) {
+        const existingEmails = new Set(candidatesList.map(c => c.email || c.id));
+        data.forEach(c => {
+          if (!existingEmails.has(c.email) && !existingEmails.has(c.id)) {
+            candidatesList.push({
+              ...c,
+              score: c.score || (c.urgency === 'Critical' ? 98.4 : (c.urgency === 'High' ? 91.5 : 82.0))
+            });
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[Matching Engine] Dynamic database query notice, processing in-memory waitlist:', err);
+  }
+
+  // Filter entire dataset without any artificial limit
+  const filtered = candidatesList.filter(cand => {
     const candOrgan = (cand.organ_needed || '').toLowerCase();
     const typeMatch = candOrgan.includes(organType) || organType.includes(candOrgan);
     const bloodMatch = allowedRecipients.includes(cand.blood_group);
     return typeMatch && bloodMatch;
   });
 
-  // Sort descending by score
+  // Sort descending by score across the entire dataset
   filtered.sort((a, b) => (b.score || 0) - (a.score || 0));
 
   return filtered;
@@ -1501,7 +1533,7 @@ async function handleRunMatchingClick() {
     // If RPC returned no matches or is not available, execute the local clinical matching engine
     if (matches.length === 0) {
       await new Promise(r => setTimeout(r, 300));
-      matches = executeLocalClinicalMatching(selectedId, currentOrgan);
+      matches = await executeLocalClinicalMatching(selectedId, currentOrgan);
     }
 
     renderMatchingResults(matches, currentOrgan);
@@ -1511,7 +1543,7 @@ async function handleRunMatchingClick() {
 
   } catch (err) {
     console.error('[Allocation Engine] Matching error:', err);
-    const fallbackMatches = executeLocalClinicalMatching(selectedId, currentOrgan);
+    const fallbackMatches = await executeLocalClinicalMatching(selectedId, currentOrgan);
     renderMatchingResults(fallbackMatches, currentOrgan);
     if (loadingState) loadingState.style.display = 'none';
     if (resultsContainer) resultsContainer.style.display = 'block';
